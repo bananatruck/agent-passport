@@ -203,6 +203,13 @@ export function App() {
     }
   };
 
+  const newestLiveReport = liveReports[0]?.report;
+  const livePassportAnnouncement = newestLiveReport
+    ? `${newestLiveReport.network?.declared.brand ?? newestLiveReport.networkName ?? "Partner"}: ${
+        VERDICT_DEFINITIONS.find((d) => d.verdict === newestLiveReport.verdict)?.title ?? newestLiveReport.verdict
+      }. ${newestLiveReport.summary}`
+    : "";
+
   const publisherTabs: Tab[] = [
     {
       title: "Two-line install",
@@ -415,6 +422,9 @@ export function App() {
 
             {/* Partner passport stack: one live card per partner the desk contacted */}
             <div className="flex flex-col gap-4 lg:col-span-5" data-demo-passports>
+              <div role="status" aria-live="polite" className="sr-only">
+                {livePassportAnnouncement}
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-display text-2xl font-bold text-(--ap-text)">Partner passports</h3>
                 <span className="rounded-sm border border-(--ap-guilloche) bg-(--ap-paper) px-2.5 py-1 text-xs text-(--ap-text)">
