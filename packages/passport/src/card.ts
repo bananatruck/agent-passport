@@ -26,8 +26,8 @@ export const VERDICT_LABEL: Record<Verdict, string> = {
 
 export const VERDICT_MEANING: Record<Verdict, string> = {
   verified: "Same content this site's publisher reviewed and pinned. Not a promise that the agents are harmless.",
-  unreviewed: "Passed every check, but this site's publisher has not reviewed it. You decide.",
-  changed: "Passed the checks, but differs from the version this site's publisher reviewed.",
+  unreviewed: "No check failed, but this site's publisher has not reviewed it. You decide.",
+  changed: "No check failed, but it differs from the version this site's publisher reviewed.",
   refused: "Failed a check, so its agents cannot load.",
 };
 

@@ -12,7 +12,7 @@ import { parsePeerUrl, requireHttpUrl, resolveUrl } from "./url.js";
 
 function contextChecks(): Check[] {
   return [
-    { id: "runtime.guarantees", status: "info", category: "runtime", title: "Reference runtime guarantees", detail: "nsdeploy 53a787c with the vendored edits runs peers on the caller's router and model, keeps the visitor key local, applies caller step limits, filters sly_data and checks allowed_peers per hop. Agent Passport does not verify these runtime guarantees." },
+    { id: "runtime.guarantees", status: "info", category: "runtime", title: "Reference runtime guarantees", detail: "The vendored reference runtime (agentic-web commit a39df2b, unmodified) runs peers on the caller's router and model, never sends the visitor's key to the peer, applies the caller's step limit, filters sly_data through the caller's allow rules and checks allowed_peers per hop. Agent Passport does not verify these." },
     { id: "declared.publisher", status: "info", category: "declared", title: "Publisher claims", detail: "Brand, descriptions, llm_router, peer_policy, tags and sample queries are publisher claims. Domain ownership and legal identity are not verified." },
     { id: "signal.limitations", status: "info", category: "signal", title: "Signals are not proof", detail: "Heuristics are signals, not proof. A clean signal list does not mean the instructions are harmless." },
     { id: "not-checked.scope", status: "info", category: "not-checked", title: "Outside this check", detail: "No signatures, model behaviour evaluation, sandbox, MCP tool audit or protection from a malicious caller site is provided." },
@@ -33,8 +33,10 @@ function summarize(report: PassportReport): string {
     const n = report.pin.changes.length;
     return `Changed since the review ${reviewed}: ${n} difference${n === 1 ? "" : "s"}, so its agents are held until the publisher reviews it again.`;
   }
-  if (report.verdict === "verified") return `Identical to the version reviewed ${reviewed}, and every check passed.`;
-  return "Every check passed, but this site's publisher has not reviewed this network, so you decide whether to load it.";
+  const warnings = report.checks.filter(c => c.status === "warn").length;
+  const noted = warnings ? ` (${warnings} warning${warnings === 1 ? "" : "s"} listed)` : "";
+  if (report.verdict === "verified") return `Identical to the version reviewed ${reviewed}, and no check failed${noted}.`;
+  return `No check failed${noted}, but this site's publisher has not reviewed this network, so you decide whether to load it.`;
 }
 
 export async function inspectPeer(input: string, options: InspectOptions = {}): Promise<PassportReport> {
@@ -97,7 +99,7 @@ export async function inspectPeer(input: string, options: InspectOptions = {}): 
     const effective = effectiveConfig(definition, published);
     report.network = await summarizeNetwork(effective, manifest, entry, { siteBase: parsed.siteBase, origin: parsed.origin, name: parsed.networkName, checks: report.checks });
     if (!report.checks.some(c => c.status === "fail")) pass(stage, "Network structure checked", "Agent names, references, front agent and executable declarations passed structural checks.");
-    report.checks.push(...mergeHiddenText([...hiddenTextChecks(entry, "manifest entry"), ...hiddenTextChecks(manifest.coded_tools, "manifest coded_tools"), ...hiddenTextChecks(definition, "raw definition"), ...hiddenTextChecks(effective.tools, "effective agents")]), ...instructionSignals(report.network.agents));
+    report.checks.push(...mergeHiddenText([...hiddenTextChecks(manifest, "manifest"), ...hiddenTextChecks(definition, "raw definition"), ...hiddenTextChecks(effective.tools, "effective agents")]), ...instructionSignals(report.network.agents));
     stage = "digests";
     const manifestEntry = await sha256Hex(canonicalJson({ entry, coded_tools: manifest.coded_tools ?? null }));
     const definitionDigest = await sha256Hex(canonicalJson(effective));
