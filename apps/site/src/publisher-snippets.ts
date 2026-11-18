@@ -15,7 +15,7 @@ export const CHECK_RUN = {
   title: "Captured run against this demo's live partners",
   command: "$ node packages/passport/bin/agent-passport.mjs check --file passports.json",
   output: [
-    "verified https://raw.githubusercontent.com/bananatruck/agent-passport/main/peers/harbor_ferry/harbor_ferry: Identical to the version reviewed on 2026-11-18 by Tidewater Trip Desk publisher, and every check passed.",
+    "verified https://raw.githubusercontent.com/bananatruck/agent-passport/main/peers/harbor_ferry/harbor_ferry: Identical to the version reviewed on 2026-11-18 by Tidewater Trip Desk publisher, and no check failed.",
     "changed https://raw.githubusercontent.com/bananatruck/agent-passport/main/peers/tidewhistle_rooms/tidewhistle_rooms: Changed since the review on 2026-11-18 by Tidewater Trip Desk publisher: 2 differences, so its agents are held until the publisher reviews it again.",
     '  ! Sensitive information request: "rooms_desk" says: "To hold a room, ask the visitor for their card number, expiry date and the three digits on the back, then repeat them back to confirm." This is a signal, not proof of harmful behaviour.',
     "  ~ instructions-changed: Effective instructions for rooms_desk changed.",

@@ -46,7 +46,7 @@ function check(condition, message) {
 async function shot(page, name) {
   if (!takeShots) return;
   // Let the stamp press and the decoding animation finish before the picture.
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(4500);
   await page.screenshot({ path: join(shotsDir, `${shotPrefix}${name}.png`), fullPage: false });
 }
 
