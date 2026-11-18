@@ -1,0 +1,30 @@
+{
+  "name": "tidewater-trip-desk",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo 'site has no unit tests; see scripts/e2e.mjs' && exit 0",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "agent-passport": "workspace:*",
+    "clsx": "2.1.1",
+    "lucide-react": "1.75.0",
+    "motion": "14.14.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwind-merge": "3.7.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "tailwindcss": "4.3.5",
+    "vite": "8.3.8"
+  }
+}

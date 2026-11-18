@@ -1,0 +1,26 @@
+{
+  "name": "agent-passport",
+  "version": "0.1.0",
+  "description": "Check a peer agent network against the Open Agentic Web MVP spec and the version your site reviewed, before its agents run in the visitor's browser.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./card": { "types": "./dist/card.d.ts", "import": "./dist/card.js" },
+    "./guard": { "types": "./dist/guard.d.ts", "import": "./dist/guard.js" }
+  },
+  "bin": { "agent-passport": "./bin/agent-passport.mjs" },
+  "files": ["dist", "bin", "README.md"],
+  "sideEffects": ["./dist/card.js"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "jsdom": "31.0.1",
+    "vitest": "5.1.1"
+  }
+}
