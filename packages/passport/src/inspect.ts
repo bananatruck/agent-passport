@@ -6,7 +6,7 @@ import type { JsonValue } from "./json.js";
 import { DEFAULT_LIMITS } from "./limits.js";
 import { effectiveConfig, summarizeNetwork } from "./network.js";
 import { comparePin, findPin } from "./pins.js";
-import { hiddenTextChecks, instructionSignals } from "./signals.js";
+import { hiddenTextChecks, instructionSignals, mergeHiddenText } from "./signals.js";
 import type { Check, InspectOptions, PassportReport } from "./types.js";
 import { parsePeerUrl, requireHttpUrl, resolveUrl } from "./url.js";
 
@@ -97,7 +97,7 @@ export async function inspectPeer(input: string, options: InspectOptions = {}): 
     const effective = effectiveConfig(definition, published);
     report.network = await summarizeNetwork(effective, manifest, entry, { siteBase: parsed.siteBase, origin: parsed.origin, name: parsed.networkName, checks: report.checks });
     if (!report.checks.some(c => c.status === "fail")) pass(stage, "Network structure checked", "Agent names, references, front agent and executable declarations passed structural checks.");
-    report.checks.push(...hiddenTextChecks(entry, "manifest entry"), ...hiddenTextChecks(manifest.coded_tools, "manifest coded_tools"), ...hiddenTextChecks(definition, "raw definition"), ...hiddenTextChecks(effective.tools, "effective agents"), ...instructionSignals(report.network.agents));
+    report.checks.push(...mergeHiddenText([...hiddenTextChecks(entry, "manifest entry"), ...hiddenTextChecks(manifest.coded_tools, "manifest coded_tools"), ...hiddenTextChecks(definition, "raw definition"), ...hiddenTextChecks(effective.tools, "effective agents")]), ...instructionSignals(report.network.agents));
     stage = "digests";
     const manifestEntry = await sha256Hex(canonicalJson({ entry, coded_tools: manifest.coded_tools ?? null }));
     const definitionDigest = await sha256Hex(canonicalJson(effective));

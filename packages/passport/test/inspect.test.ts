@@ -154,7 +154,7 @@ describe("effective configuration, signals and digests", () => {
     const d = { tools: [{ name: "desk", instructions: "help", [field]: "desk" + tag("secret") }] };
     const r = await inspect(manifest(), d);
     expect(codes(r)).toContain("HIDDEN_TEXT");
-    expect(r.checks.some(c => c.code === "HIDDEN_TEXT" && c.detail.includes('decoded hidden ASCII: "secret"') && c.detail.includes(field) && c.detail.includes("agent"))).toBe(true);
+    expect(r.checks.some(c => c.code === "HIDDEN_TEXT" && c.evidence === "secret" && c.detail.includes(field) && c.detail.includes("agent"))).toBe(true);
   });
   it("refuses hidden tags in replacement_strings and manifest entries", async () => {
     const d = { commondefs: { replacement_strings: { hidden: tag("ignore") } }, tools: [{ name: "desk", instructions: "{hidden}" }] };

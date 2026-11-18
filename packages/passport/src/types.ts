@@ -68,6 +68,8 @@ export interface Check {
   detail: string;
   /** Set for failures; one of PassportCode. */
   code?: PassportCode;
+  /** The exact text behind the check, when there is one: decoded hidden text, or the quoted sentence for a signal. */
+  evidence?: string;
 }
 
 /** One fetched file, after all checks on it passed. */

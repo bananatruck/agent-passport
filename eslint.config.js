@@ -8,6 +8,7 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/dist/**",
       "apps/site/public/runtime/**",
+      "apps/site/public/vendor/**",
       "reference/**",
       "peers/**/runtime/**",
     ],
