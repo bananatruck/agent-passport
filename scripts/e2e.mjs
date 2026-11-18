@@ -54,7 +54,17 @@ async function runViewport(browser, { name, width, height }) {
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors = [];
+  const badRequests = [];
   page.on("pageerror", (e) => errors.push(String(e)));
+  page.on("requestfailed", (r) => {
+    // The Inspector's hazard fixtures abort or redirect on purpose; nothing else may fail.
+    const via = r.redirectedFrom()?.url() ?? "";
+    const timing = r.timing();
+    if (!/:4177\//.test(r.url()) && !/:4177\//.test(via)) badRequests.push(`${r.failure()?.errorText ?? "failed"} ${r.url()} (started ${Math.round(timing.startTime)}, failed after ${Math.round(timing.responseEnd)} ms)`);
+  });
+  page.on("response", (r) => {
+    if (r.status() >= 400 && !/:4177\//.test(r.url())) badRequests.push(`HTTP ${r.status()} ${r.url()}`);
+  });
   page.on("console", (m) => {
     if (m.type() === "error" && !/Agent Passport did not load/.test(m.text())) errors.push(`${m.text()} at ${m.location()?.url ?? "?"}`);
   });
@@ -115,6 +125,7 @@ async function runViewport(browser, { name, width, height }) {
   }
 
   check(errors.length === 0, `${name}: no page errors (${errors.slice(0, 3).join(" | ")})`);
+  check(badRequests.length === 0, `${name}: no failed requests or HTTP errors (${badRequests.slice(0, 3).join(" | ")})`);
   await context.close();
 }
 
