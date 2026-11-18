@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Browser check of the whole demo in Playwright's bundled Chromium (not a personal browser).
 // Run after `pnpm build`:  node scripts/e2e.mjs [--screenshots]
+// Against a deployed copy instead of local servers:  SITE_URL=https://.../ node scripts/e2e.mjs
 //
 // Starts the local servers, then at 1440x900 and 390x844:
 // - loads the page and checks there is no horizontal scroll and no page errors,
@@ -19,7 +20,9 @@ import { startAll } from "./serve.mjs";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const shotsDir = join(root, "docs/screenshots");
 const takeShots = process.argv.includes("--screenshots");
-const SITE = `http://127.0.0.1:${process.env.SITE_PORT || 4173}/`;
+const shotPrefix = process.env.SITE_URL ? "live-" : "";
+const SITE = process.env.SITE_URL || `http://127.0.0.1:${process.env.SITE_PORT || 4173}/`;
+const local = !process.env.SITE_URL;
 
 function chromiumPath() {
   if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
@@ -44,7 +47,7 @@ async function shot(page, name) {
   if (!takeShots) return;
   // Let the stamp press and the decoding animation finish before the picture.
   await page.waitForTimeout(2500);
-  await page.screenshot({ path: join(shotsDir, `${name}.png`), fullPage: false });
+  await page.screenshot({ path: join(shotsDir, `${shotPrefix}${name}.png`), fullPage: false });
 }
 
 async function runViewport(browser, { name, width, height }) {
@@ -116,7 +119,7 @@ async function runViewport(browser, { name, width, height }) {
 }
 
 if (takeShots) await mkdir(shotsDir, { recursive: true });
-const servers = await startAll();
+const servers = local ? await startAll() : [];
 const browser = await chromium.launch({ executablePath: chromiumPath(), headless: true });
 try {
   await runViewport(browser, { name: "desktop", width: 1440, height: 900 });
