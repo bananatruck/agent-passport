@@ -64,7 +64,7 @@ These come from reading the runtime's source (`apps/site/public/runtime/`, vendo
 - A partner's files could change between a check and the runtime's own fetch; the guard makes the runtime compile exactly the verified bytes.
 - It calls a partner's built-in REST toolbox URL with no consent prompt and no `allowed_peers` check, attaching `sly_data.backend_token` when the calling site passed one.
 
-An adversarial review tried to get hostile networks stamped as trusted; what worked became failing tests and was then fixed, and every attempt is listed in [docs/REDTEAM.md](docs/REDTEAM.md).
+Two outside reviews (Grok in Cursor, then GPT 6.1 Sol in Codex) tried to get hostile networks stamped as trusted or described wrongly; what worked became failing tests and was then fixed, and every attempt is listed in [docs/REDTEAM.md](docs/REDTEAM.md).
 
 ## Use it on your agentic site
 
@@ -108,7 +108,7 @@ Without a key, the site's default model is the runtime's built-in scripted mock,
 Built in one night for the Open Agentic Web Challenge, then deployed.
 
 - Working and tested: the checker, pins, CLI, card, runtime guard, and the Tidewater Trip Desk demo with three partner sites, offline and on GitHub Pages.
-- Automated checks: 248 unit and integration tests (including runs of the reference runtime's real `Engine`), lint, type-check, the production build, and a Playwright browser run of the whole demo at 1440 by 900 and 390 by 844.
+- Automated checks: 261 unit and integration tests (including runs of the reference runtime's real `Engine`), lint, type-check, the production build, and a Playwright browser run of the whole demo at 1440 by 900 and 390 by 844 that also fails on console errors and failed requests.
 - Not done: signatures (the spec defines none), checking MCP servers, and a re-consent prompt when a pinned partner changes; the guard holds a changed partner instead.
 - The design mock-ups in `design/mockups/` are captures of the first layout, because the image model was over its quota during the build.
 - How it was built: overnight, by AI coding agents (Claude Opus as tech lead, GPT 6.1 Sol in Codex, Gemini 4 Argon in Antigravity, Grok in Cursor) directed by the author.
