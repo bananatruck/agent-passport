@@ -30,7 +30,11 @@ export function parseStrictJson(text: string, limits: Pick<Limits, "maxDepth" | 
     let out = "";
     while (at < text.length) {
       const c = text[at++];
-      if (c === '"') return out;
+      if (c === '"') {
+        // An unpaired surrogate (only possible through a \u escape) would be hashed as U+FFFD.
+        if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(out)) fail("Unpaired surrogate in string");
+        return out;
+      }
       if (c === "\\") {
         const escaped = text[at++];
         const escapes: Record<string, string> = { '"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };

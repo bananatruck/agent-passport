@@ -12,7 +12,7 @@ import { parsePeerUrl, requireHttpUrl, resolveUrl } from "./url.js";
 
 function contextChecks(): Check[] {
   return [
-    { id: "runtime.guarantees", status: "info", category: "runtime", title: "Reference runtime guarantees", detail: "The vendored reference runtime (agentic-web commit a39df2b, unmodified) runs peers on the caller's router and model, never sends the visitor's key to the peer, applies the caller's step limit, filters sly_data through the caller's allow rules and checks allowed_peers per hop. Agent Passport does not verify these." },
+    { id: "runtime.guarantees", status: "info", category: "runtime", title: "Reference runtime guarantees", detail: "The vendored reference runtime (agentic-web commit a39df2b, unmodified) runs peers on the caller's router and model, never sends the visitor's key to the peer, applies the caller's step limit on its built-in runner (the optional LangChain runner, unused by static sites such as this demo, does not), filters sly_data through the caller's allow rules and checks allowed_peers per hop. Agent Passport does not verify these." },
     { id: "declared.publisher", status: "info", category: "declared", title: "Publisher claims", detail: "Brand, descriptions, llm_router, peer_policy, tags and sample queries are publisher claims. Domain ownership and legal identity are not verified." },
     { id: "signal.limitations", status: "info", category: "signal", title: "Signals are not proof", detail: "Heuristics are signals, not proof. A clean signal list does not mean the instructions are harmless." },
     { id: "not-checked.scope", status: "info", category: "not-checked", title: "Outside this check", detail: "No signatures, model behaviour evaluation, sandbox, MCP tool audit or protection from a malicious caller site is provided." },
@@ -67,6 +67,13 @@ export async function inspectPeer(input: string, options: InspectOptions = {}): 
     stage = "definition.url";
     if (typeof entry.hocon !== "string" || !entry.hocon) throw new PassportError("MANIFEST_SHAPE", "Definition hocon must be a non-empty string.");
     const definitionUrl = requireHttpUrl(resolveUrl(parsed.siteBase, entry.hocon), options.allowLoopbackHttp ?? true);
+    // The guard serves each checked file at its own URL; a definition published at the manifest's
+    // or links.json's URL would make two checked bodies compete for one address.
+    const linksUrl = new URL(resolveUrl(parsed.siteBase, "/links.json")).href;
+    const manifestUrl = new URL(resolveUrl(parsed.siteBase, "agent-manifest.json")).href;
+    if (definitionUrl.href === linksUrl || definitionUrl.href === manifestUrl) {
+      throw new PassportError("DEFINITION_SHAPE", `The network definition is published at ${definitionUrl.href}, the address of the ${definitionUrl.href === linksUrl ? "links file" : "manifest"}; a definition needs its own file.`);
+    }
     if (definitionUrl.origin !== parsed.origin) {
       const accepted = await options.confirmDestination?.({ origin: definitionUrl.origin, url: definitionUrl.href, purpose: "network definition" });
       if (!accepted) throw new PassportError("DESTINATION_DECLINED", `Definition destination ${definitionUrl.origin} was not approved.`);
@@ -99,7 +106,11 @@ export async function inspectPeer(input: string, options: InspectOptions = {}): 
       report.artifacts.links = artifact;
       report.checks.push({ id: stage, status: "info", category: "verified", title: artifact.status === 404 ? "No published links" : "Published links read", detail: artifact.status === 404 ? "links.json returned 404; the runtime uses no published bindings." : "The selected links.json entry is merged before runtime substitutions." });
     } catch (error) {
-      if (linksAnswered) throw new PassportError(error instanceof PassportError ? error.code : "DEFINITION_SHAPE", `links.json exists but cannot be used: ${error instanceof Error ? error.message : String(error)} The runtime's own parser might read it differently, so it is refused.`);
+      // Fall back to "no published links" only where the runtime would also end up with none:
+      // a 404, another non-2xx status, or a network failure. A 200 with an unusable body, a redirect
+      // (which the runtime would follow) or a timeout (it has none) could give the runtime links.
+      const code = error instanceof PassportError ? error.code : "DEFINITION_SHAPE";
+      if (linksAnswered || !["HTTP_STATUS", "NETWORK_ERROR"].includes(code)) throw new PassportError(error instanceof PassportError ? error.code : "DEFINITION_SHAPE", `links.json exists but cannot be used: ${error instanceof Error ? error.message : String(error)} The runtime's own parser might read it differently, so it is refused.`);
       published = {};
       report.checks.push({ id: stage, status: "info", category: "verified", title: "Published links unavailable", detail: `${error instanceof PassportError ? error.code + ": " : ""}${error instanceof Error ? error.message : String(error)} The runtime uses no published bindings; the guard must serve a 404.` });
     }

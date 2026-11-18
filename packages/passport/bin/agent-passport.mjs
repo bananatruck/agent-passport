@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const usage = {
   inspect: "inspect <url> [--json]\nInspect a peer without loading it. Exit 1 for refused or changed peers.\nExamples:\n  agent-passport inspect https://peer.example/agents/transit\n  agent-passport inspect http://127.0.0.1:8080/transit --json",
@@ -96,4 +97,9 @@ export async function runCli(argv, { api, stdout = text => process.stdout.write(
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = await runCli(process.argv.slice(2));
+// Compare real paths: an installed bin is a symlink, and import.meta.url names its target.
+function isMain() {
+  try { return !!process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); }
+  catch { return false; }
+}
+if (isMain()) process.exitCode = await runCli(process.argv.slice(2));

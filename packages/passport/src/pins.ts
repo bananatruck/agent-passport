@@ -1,7 +1,6 @@
 import { canonicalJson } from "./canonical.js";
 import { PassportError } from "./errors.js";
 import { isObject, parseStrictJson } from "./json.js";
-import { DEFAULT_LIMITS } from "./limits.js";
 import { parsePeerUrl } from "./url.js";
 import type { Change, NetworkSummary, PassportReport, PinEntry, PinFile, PinSnapshot } from "./types.js";
 
@@ -13,6 +12,13 @@ function snapshotOf(network: NetworkSummary): PinSnapshot {
     links: network.links,
   });
 }
+
+/**
+ * Pin files hold one small snapshot per reviewed partner, so they get their own key budget
+ * instead of the per-artifact limit: about 1,000 partners with 40 agents each still fit.
+ * serializePinFile enforces the same budget, so a file the publisher writes is always readable.
+ */
+export const PIN_FILE_LIMITS = { maxDepth: 64, maxKeys: 400_000 };
 
 export function createPin(report: PassportReport, meta: { label?: string; reviewedBy?: string; note?: string; now?: Date } = {}): PinEntry {
   if (report.verdict === "refused" || report.checks.some(c => c.status === "fail") || !report.network || !report.digest || !report.networkUrl) throw new PassportError("PIN_FILE_INVALID", "Cannot pin a refused or incomplete network.");
@@ -62,7 +68,7 @@ export function parsePinFile(text: string): PinFile {
   const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === "string");
   const hash = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
   try {
-    const doc = parseStrictJson(text, DEFAULT_LIMITS);
+    const doc = parseStrictJson(text, PIN_FILE_LIMITS);
     if (!isObject(doc) || doc.version !== 1 || !Array.isArray(doc.pins)) return invalid();
     const pins: PinEntry[] = [];
     const seen = new Set<string>();
@@ -92,5 +98,8 @@ export function parsePinFile(text: string): PinFile {
 }
 
 export function serializePinFile(file: PinFile): string {
-  return JSON.stringify({ version: 1, pins: [...file.pins].sort((a, b) => a.network < b.network ? -1 : a.network > b.network ? 1 : 0) }, null, 2) + "\n";
+  const text = JSON.stringify({ version: 1, pins: [...file.pins].sort((a, b) => a.network < b.network ? -1 : a.network > b.network ? 1 : 0) }, null, 2) + "\n";
+  // Refuse to write what parsePinFile would refuse to read.
+  parseStrictJson(text, PIN_FILE_LIMITS);
+  return text;
 }
