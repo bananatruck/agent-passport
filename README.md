@@ -44,7 +44,7 @@ All screenshots come from `SITE_URL=https://bananatruck.github.io/agent-passport
 
 Every line on the card says who stands behind it.
 
-- Checked by Agent Passport: no redirects (a browser hides where a redirect goes, and the spec treats a cross-origin redirect as a new destination); HTTPS outside loopback; no credentials or referrer sent; byte limits enforced while streaming; timeouts; strict UTF-8 JSON with no duplicate keys; the exact network name; a front agent that matches what the runtime will actually run; unique agent names; every tool reference classifiable the way the runtime classifies it; no executable agent without a declared code bundle (the bundle itself is fetched later by the runtime and is not checked); no bidirectional controls or invisible Unicode tag characters anywhere in the manifest or definition (the hidden text is decoded and shown); SHA-256 digests of the effective network, including `{token}` substitutions and the partner's `links.json`.
+- Checked by Agent Passport: no redirects (a browser hides where a redirect goes, and the spec treats a cross-origin redirect as a new destination); HTTPS outside loopback; no credentials or referrer sent; byte limits enforced while streaming; timeouts; strict UTF-8 JSON with no duplicate keys; the exact network name; a front agent that matches what the runtime will actually run; unique agent names; every tool reference classifiable the way the runtime classifies it; no executable agent without a declared code bundle (the bundle itself is fetched later by the runtime and is not checked); no REST toolbox agent aimed anywhere but the partner's own origin; no bidirectional controls or invisible Unicode tag characters anywhere in the manifest or definition (the hidden text is decoded and shown); SHA-256 digests of the effective network, including `{token}` substitutions and the partner's `links.json`.
 - Enforced by the reference runtime, not by Agent Passport: the partner runs on your router and model, never receives your key, stays within your step limit, and sees private context only through your allow rules.
 - Stated by the partner, not verified: brand, descriptions, the router it names, its peer policy.
 - Signals, not proof: instructions that ask for passwords, keys or card numbers, tell the model to ignore earlier instructions, or act without telling the visitor.
@@ -62,6 +62,9 @@ These come from reading the runtime's source (`apps/site/public/runtime/`, vendo
 - It parses definitions with its own HOCON parser, which merges duplicate keys where a JSON parser keeps the last one, so one document can mean one thing to a checker and another to the runtime.
 - It fetches peer files with default `fetch`: redirects are followed to any origin, with no size limit or timeout.
 - A partner's files could change between a check and the runtime's own fetch; the guard makes the runtime compile exactly the verified bytes.
+- It calls a partner's built-in REST toolbox URL with no consent prompt and no `allowed_peers` check, attaching `sly_data.backend_token` when the calling site passed one.
+
+An adversarial review tried to get hostile networks stamped as trusted; what worked became failing tests and was then fixed, and every attempt is listed in [docs/REDTEAM.md](docs/REDTEAM.md).
 
 ## Use it on your agentic site
 
