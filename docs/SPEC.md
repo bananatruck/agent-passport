@@ -59,8 +59,8 @@ Bodies must be valid UTF-8 and strict JSON, with no duplicate keys at any depth,
 The manifest has a `networks` entry whose `name` exactly equals the requested network name, with string `front_man` and `hocon` values; no other entry is ever selected.
 The definition URL is resolved against the site base; a definition on a different origin is a new destination that needs its own consent before it is fetched.
 The definition has a non-empty `tools` array, every agent has a non-empty unique name after trimming, every tool reference is classifiable as an internal agent, an HTTP(S) or `/`-prefixed external network, an MCP reference, or a declared link slot, and the runtime's derived front agent equals the manifest's `front_man`.
-An agent with `class` or `toolbox` is an executable definition: it is refused unless the manifest declares a `coded_tools` bundle, and the card warns when that bundle has no SRI digest; the bundle itself is fetched later by the runtime and is not checked by Agent Passport.
-Effective instructions are computed with the same `{token}` substitution the runtime applies, and those are the texts that are hashed, diffed and shown.
+An agent with a `class` key is an executable definition: it is refused unless the manifest declares a `coded_tools` bundle, and the card warns when that bundle has no SRI digest. An agent the runtime treats as a REST `toolbox` (falsy `class`, truthy `toolbox`) is refused unless its `args.url` is on the partner's own origin and its method is a string; the bundle itself is fetched later by the runtime and is not checked by Agent Passport.
+Effective instructions are the trimmed `instructions` and `command` of each agent after the same `{token}` substitution the runtime applies; those are the texts that are hashed, diffed and shown. The runtime may add its own text (a default prompt for an agent with none, and CRUSE rendering rules when the network turns CRUSE on); that text comes from the runtime, not the partner, and the card notes it separately.
 Any string in the manifest or the definition (including names, descriptions, the brand and instructions) that contains bidirectional control characters or Unicode tag characters (the "ASCII smuggling" block U+E0000 to U+E007F) are refused, and the hidden text is decoded and shown.
 The digests are SHA-256 over the canonical JSON of the selected manifest entry plus `coded_tools`, over the canonical JSON of the effective definition, and over the canonical JSON of the peer's `links.json` entry for that network, because the runtime merges that file into the network.
 In the runtime guard, the runtime compiles exactly the bytes Agent Passport verified (no second fetch), and the guard checks that the runtime's HOCON parser reads those bytes as the same value JSON.parse does.
@@ -72,7 +72,7 @@ The card reports these as runtime guarantees and names the runtime version, and 
 
 ### 4.4 Declared by the publisher, not verified
 
-The peer's brand, descriptions, `llm_router`, `peer_policy`, tags and sample queries are shown as claims.
+The peer's brand and description are shown, and its `llm_router` and `peer_policy` are recorded, as claims only; tags and sample queries are not displayed.
 Who operates the peer's domain is not verified: an origin is not a legal identity.
 
 ### 4.5 Signals, not proof
