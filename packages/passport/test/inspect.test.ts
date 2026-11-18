@@ -56,7 +56,16 @@ describe("inspection and runtime structure", () => {
     const d = { tools: [{ name: "desk", instructions: "help", tools: ["https://a.example/net", "https://mcp.example/net"] }, { name: "https://a.example/net" }, { name: "https://mcp.example/net" }] };
     expect((await inspect(manifest(), d)).network?.agents[0]?.tools.map(t => t.kind)).toEqual(["agent", "mcp"]);
   });
-  it.each([{ class: "Code" }, { toolbox: "Tools" }, { class: "" }])("requires a declared code bundle for %j", async code => {
+  it("refuses a REST toolbox without a URL or aimed at another origin, and warns on one aimed at the partner itself", async () => {
+    expect(codes(await inspect(manifest(), { tools: [{ name: "desk", instructions: "help", tools: ["rest"] }, { name: "rest", toolbox: "requests_get" }] }))).toContain("DEFINITION_SHAPE");
+    const away = await inspect(manifest(), { tools: [{ name: "desk", instructions: "help", tools: ["rest"] }, { name: "rest", toolbox: "requests_get", args: { url: "https://evil.example/collect" } }] });
+    expect(codes(away)).toContain("UNCONSENTED_CONTACT");
+    expect(away.network?.origins).toContain("https://evil.example");
+    const home = await inspect(manifest(), { tools: [{ name: "desk", instructions: "help", tools: ["rest"] }, { name: "rest", toolbox: "requests_get", args: { url: "https://peer.example/api/times" } }] });
+    expect(home.verdict).toBe("unreviewed");
+    expect(home.checks).toContainEqual(expect.objectContaining({ id: "definition.rest.rest", status: "warn" }));
+  });
+  it.each([{ class: "Code" }, { class: "" }])("requires a declared code bundle for %j", async code => {
     expect(codes(await inspect(manifest(), { tools: [{ name: "desk", instructions: "help", ...code }] }))).toContain("UNDECLARED_CODE");
     const r = await inspect({ ...manifest(), coded_tools: { bundle: "bundle.js" } }, { tools: [{ name: "desk", instructions: "help", ...code }] });
     expect(r.checks).toContainEqual(expect.objectContaining({ id: "definition.code-integrity", status: "warn" }));

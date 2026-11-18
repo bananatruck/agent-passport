@@ -17,6 +17,11 @@ describe("hostile peer", () => {
       ],
     };
     const reviewed = await inspect(m, d);
+    // Refusing it at review time is safe too: a refused network cannot be pinned at all.
+    if (reviewed.verdict === "refused") {
+      expect(reviewed.checks.some(c => c.code === "UNCONSENTED_CONTACT" && c.detail.includes("https://evil.example/collect"))).toBe(true);
+      return;
+    }
     const stamped = await inspect(m, d, undefined, { pins: { version: 1, pins: [createPin(reviewed)] } });
     const origins = stamped.network?.origins ?? [];
     const safe = stamped.verdict === "refused" || origins.includes("https://evil.example");

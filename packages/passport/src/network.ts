@@ -137,8 +137,28 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
     if (agent.instructions !== undefined && typeof agent.instructions !== "string") throw new PassportError("DEFINITION_SHAPE", `Instructions for ${name} must be a string.`);
     if (agent.description !== undefined && typeof agent.description !== "string") throw new PassportError("DEFINITION_SHAPE", `Description for ${name} must be a string.`);
     if (agent.tools !== undefined && !Array.isArray(agent.tools)) throw new PassportError("DEFINITION_SHAPE", `Tools for ${name} must be an array.`);
-    const executable = Object.hasOwn(agent, "class") || Object.hasOwn(agent, "toolbox");
-    if (executable && !codedTools) fail("UNDECLARED_CODE", `definition.code.${name}`, `Agent ${name} declares executable code without coded_tools.bundle.`);
+    const coded = Object.hasOwn(agent, "class");
+    const rest = !coded && Object.hasOwn(agent, "toolbox");
+    if (coded && !codedTools) fail("UNDECLARED_CODE", `definition.code.${name}`, `Agent ${name} declares executable code without coded_tools.bundle.`);
+    if (rest) {
+      // runner.js dispatchRest fetches args.url with no consent prompt and no allowed_peers check,
+      // attaching sly_data.backend_token when the caller passed one. Only the partner's own origin,
+      // which the visitor already approved, is acceptable.
+      const args = object(agent.args);
+      const target = (() => {
+        try { return typeof args.url === "string" ? requireHttpUrl(args.url) : null; } catch { return null; }
+      })();
+      const method = typeof args.method === "string" ? args.method.toUpperCase() : "GET";
+      if (!target) fail("DEFINITION_SHAPE", `definition.rest.${name}`, `REST toolbox agent ${name} has no valid http(s) args.url.`);
+      else {
+        origins.add(target.origin);
+        if (target.origin !== context.origin) {
+          fail("UNCONSENTED_CONTACT", `definition.rest.${name}`, `REST toolbox agent ${name} would make your browser send ${method} ${target.href} without asking you: the runtime does not ask before toolbox calls, and that origin is not the partner's own. It would attach sly_data.backend_token if your site passed one.`);
+        } else {
+          checks.push({ id: `definition.rest.${name}`, status: "warn", category: "verified", title: "REST call to the partner's own site", detail: `Agent ${name} sends ${method} ${target.href} without a separate prompt, attaching sly_data.backend_token if your site passed one.` });
+        }
+      }
+    }
     const tools = (Array.isArray(agent.tools) ? agent.tools : []).map(ref => classifyTool(ref, config, context.origin));
     for (const tool of tools) {
       if (tool.kind === "missing") fail("MISSING_TOOL", `definition.tool.${name}.${tool.ref}`, `Agent ${name} references missing tool ${JSON.stringify(tool.ref)}.`);
@@ -148,8 +168,10 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
     const down = object(allow.to_downstream).sly_data;
     const up = object(allow.to_upstream).sly_data;
     for (const rules of [down, up]) if (rules !== undefined && rules !== null && (!Array.isArray(rules) || !rules.every(r => typeof r === "string"))) throw new PassportError("DEFINITION_SHAPE", `Private-context rules for ${name} must be string arrays.`);
-    const instructions = typeof agent.instructions === "string" ? agent.instructions : "";
-    summaries.push({ name, description: typeof agent.description === "string" ? agent.description : "", instructions, instructionsSha256: await sha256Hex(instructions), tools, type: executable ? "coded" : instructions ? "llm" : "other", allowSly: { toDownstream: stringList(down), toUpstream: stringList(up) } });
+    if (agent.command !== undefined && typeof agent.command !== "string") throw new PassportError("DEFINITION_SHAPE", `Command for ${name} must be a string.`);
+    // Mirror runner.js: the system prompt is the trimmed instructions, then the trimmed command.
+    const instructions = [agent.instructions, agent.command].filter((s): s is string => typeof s === "string" && !!s.trim()).map(s => s.trim()).join("\n\n");
+    summaries.push({ name, description: typeof agent.description === "string" ? agent.description : "", instructions, instructionsSha256: await sha256Hex(instructions), tools, type: coded ? "coded" : rest ? "rest" : instructions ? "llm" : "other", allowSly: { toDownstream: stringList(down), toUpstream: stringList(up) } });
   }
   const front = runtimeFrontMan(agents);
   if (front !== entry.front_man) fail("FRONT_MAN_MISMATCH", "definition.front-man", `Manifest front_man ${JSON.stringify(entry.front_man)} differs from runtime front agent ${JSON.stringify(front)}.`);

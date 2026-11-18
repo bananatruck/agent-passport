@@ -101,7 +101,8 @@ export async function inspectPeer(input: string, options: InspectOptions = {}): 
     if (!report.checks.some(c => c.status === "fail")) pass(stage, "Network structure checked", "Agent names, references, front agent and executable declarations passed structural checks.");
     report.checks.push(...mergeHiddenText([...hiddenTextChecks(manifest, "manifest"), ...hiddenTextChecks(definition, "raw definition"), ...hiddenTextChecks(effective.tools, "effective agents")]), ...instructionSignals(report.network.agents));
     stage = "digests";
-    const manifestEntry = await sha256Hex(canonicalJson({ entry, coded_tools: manifest.coded_tools ?? null }));
+    // The brand is shown as the card heading, so a change to it must break the pin too.
+    const manifestEntry = await sha256Hex(canonicalJson({ entry, coded_tools: manifest.coded_tools ?? null, brand: manifest.brand ?? null }));
     const definitionDigest = await sha256Hex(canonicalJson(effective));
     const links = await sha256Hex(canonicalJson(published));
     report.digest = { manifestEntry, definition: definitionDigest, links, combined: await sha256Hex(canonicalJson({ manifestEntry, definition: definitionDigest, links })) };

@@ -29,7 +29,8 @@ export type PassportCode =
   | "UNDECLARED_CODE"
   | "HIDDEN_TEXT"
   | "DESTINATION_DECLINED"
-  | "PIN_FILE_INVALID";
+  | "PIN_FILE_INVALID"
+  | "UNCONSENTED_CONTACT";
 
 /** Byte, time and structure limits. All have defaults (see DEFAULT_LIMITS). */
 export interface Limits {
@@ -102,13 +103,13 @@ export interface ToolRef {
 export interface AgentSummary {
   name: string;
   description: string;
-  /** Instructions after the runtime's {token} substitution: the text the model reads. "" when none. */
+  /** The system prompt the runtime builds: trimmed instructions, then trimmed command, after {token} substitution. "" when none. */
   instructions: string;
   /** Lowercase hex SHA-256 of `instructions` (UTF-8). */
   instructionsSha256: string;
   tools: ToolRef[];
-  /** "llm" when it has instructions, "coded" when it has class or toolbox, "other" otherwise. */
-  type: "llm" | "coded" | "other";
+  /** "llm" when it has instructions, "coded" when it has class (bundle code), "rest" when it has toolbox (a built-in REST call), "other" otherwise. */
+  type: "llm" | "coded" | "rest" | "other";
   /** Private-context allow rules: allow.to_downstream.sly_data and allow.to_upstream.sly_data. */
   allowSly: { toDownstream: string[]; toUpstream: string[] };
 }
@@ -137,7 +138,7 @@ export interface NetworkSummary {
 }
 
 export interface Digests {
-  /** sha256 of canonical JSON of { entry, coded_tools } from the manifest. */
+  /** sha256 of canonical JSON of { entry, coded_tools, brand } from the manifest. */
   manifestEntry: string;
   /** sha256 of canonical JSON of the effective definition (after {token} substitution). */
   definition: string;

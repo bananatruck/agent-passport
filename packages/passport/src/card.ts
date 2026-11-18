@@ -95,6 +95,7 @@ li.pass .mark { color: var(--ap-verified, #1F7A4D); }
 li .t { font-weight: 600; }
 li .d { display: block; color: color-mix(in srgb, var(--ap-text, #14212B) 80%, transparent); overflow-wrap: anywhere; }
 .change { border-left: 3px solid var(--ap-changed, #A86A12); padding: 6px 10px; background: color-mix(in srgb, var(--ap-changed, #A86A12) 8%, transparent); border-radius: 0 6px 6px 0; }
+.change.agent { border-left-color: var(--ap-guilloche, #9DC3B8); background: color-mix(in srgb, var(--ap-paper, #E9F1EE) 60%, white); }
 .change.refused { border-left-color: var(--ap-refused, #B42318); background: color-mix(in srgb, var(--ap-refused, #B42318) 8%, transparent); }
 .change pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; font-family: var(--ap-font-mono, ui-monospace, monospace); font-size: 12px; }
 .mrz { margin: 12px 0 0; padding-top: 10px; border-top: 1px dashed color-mix(in srgb, var(--ap-ink, #0E2A3B) 35%, transparent);
@@ -263,6 +264,24 @@ export class AgentPassportCard extends HTMLElement {
         const c = el("div", "change");
         c.append(el("strong", undefined, ch.detail));
         if (ch.after) c.append(el("pre", undefined, ch.after));
+        list.append(c);
+      }
+      det.append(list);
+      content.append(det);
+    }
+    if (report.network?.agents.length) {
+      // The text each agent's model will read, after the runtime's substitutions. Shown as text only.
+      const det = el("details");
+      det.append(el("summary", undefined, `What each agent is told (${report.network.agents.length})`));
+      const list = el("div");
+      list.style.display = "grid";
+      list.style.gap = "8px";
+      list.style.marginTop = "8px";
+      for (const agent of report.network.agents) {
+        const c = el("div", "change agent");
+        const kind = agent.type === "rest" ? "REST call" : agent.type === "coded" ? "code" : agent.name === report.network.runtimeFrontMan ? "front agent" : "agent";
+        c.append(el("strong", undefined, `${agent.name} (${kind})`));
+        c.append(el("pre", undefined, agent.instructions || "No instructions."));
         list.append(c);
       }
       det.append(list);
