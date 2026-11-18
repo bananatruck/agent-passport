@@ -26,8 +26,8 @@ describe("peer URLs", () => {
 
 describe("strict JSON and canonical hashes", () => {
   const parse = (text: string) => parseStrictJson(text, DEFAULT_LIMITS);
-  it.each(['null', 'true', 'false', '-1.23e+4', '1e400', '-0', '"a\\n\\t\\b\\f\\r\\\\\\/\\"\\uD800"', '{"x":[1,false,null,{"a":"b"}]}', ' \r\n [ ]\t '])("matches JSON.parse for %s", text => expect(parse(text)).toEqual(JSON.parse(text)));
-  it.each(['', '[1,]', '{"a":1,}', '01', '+1', '1.', '1e', 'NaN', 'true false', '"\\x00"', '"\n"', '"\\uZZZZ"', '\uFEFF{}', '{a:1}', '[', '{"a" 1}', '"unterminated'])('rejects malformed JSON %s', text => expect(() => parse(text)).toThrow(expect.objectContaining({ code: "NOT_JSON" })));
+  it.each(['null', 'true', 'false', '-1.23e+4', '-0', '"a\\n\\t\\b\\f\\r\\\\\\/\\"\\uD800"', '{"x":[1,false,null,{"a":"b"}]}', ' \r\n [ ]\t '])("matches JSON.parse for %s", text => expect(parse(text)).toEqual(JSON.parse(text)));
+  it.each(['', '[1,]', '{"a":1,}', '01', '+1', '1.', '1e', 'NaN', 'true false', '"\\x00"', '"\n"', '"\\uZZZZ"', '\uFEFF{}', '{a:1}', '[', '1e400', '-1e400', '{"a" 1}', '"unterminated'])('rejects malformed JSON %s', text => expect(() => parse(text)).toThrow(expect.objectContaining({ code: "NOT_JSON" })));
   it("detects duplicate decoded keys at depth with a path", () => expect(() => parse('{"a":[{"name":1,"na\\u006de":2}]}')).toThrow(expect.objectContaining({ code: "DUPLICATE_KEY", message: expect.stringContaining('$["a"][0]["name"]') })));
   it("counts object keys and container depth exactly", () => {
     expect(parseStrictJson('{"a":1}', { maxDepth: 1, maxKeys: 1 })).toEqual({ a: 1 });

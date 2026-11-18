@@ -87,7 +87,13 @@ export function parseStrictJson(text: string, limits: Pick<Limits, "maxDepth" | 
       if (text.startsWith(literal, at)) { at += literal.length; return result; }
     }
     const number = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(text.slice(at));
-    if (number) { at += number[0].length; return Number(number[0]); }
+    if (number) {
+      const parsed = Number(number[0]);
+      // Infinity would hash as null in canonical JSON, so two different documents could share a digest.
+      if (!Number.isFinite(parsed)) fail("Number is not finite");
+      at += number[0].length;
+      return parsed;
+    }
     return fail("Expected JSON value");
   };
   const result = value(0, "$");
