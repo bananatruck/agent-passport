@@ -46,7 +46,7 @@ const BOUNDARY_ROWS = [
     category: "Enforced by the runtime (SPEC 4.3)",
     source: "Enforced by the vendored reference runtime, not checked by Agent Passport",
     covered:
-      "Runs the peer on the caller's router and model, never sends the visitor's API key to the peer, enforces the caller's step limit, filters private context (sly_data) through the caller's allow rules, and checks allowed_peers on each hop.",
+      "Runs the peer on the caller's router and model, never sends the visitor's API key to the peer, enforces the caller's step limit on its built-in runner (the one static sites like this one use; the optional LangChain runner does not), filters private context (sly_data) through the caller's allow rules, and checks allowed_peers on each hop.",
   },
   {
     category: "Declared by the publisher (SPEC 4.4)",
