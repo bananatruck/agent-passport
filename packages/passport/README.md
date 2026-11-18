@@ -86,8 +86,8 @@ It was written against the runtime copy in `apps/site/public/runtime/` (see `UPS
 ```sh
 agent-passport inspect <url> [--json]
 agent-passport pin <url> --file passports.json [--label <text>] [--reviewed-by <text>] [--note <text>]
-agent-passport check --file passports.json [--json]
+agent-passport check --file passports.json [--network <url> ...] [--json]
 ```
 
-`check` exits 0 only when every pinned partner is verified, so it can fail a CI job when a partner changes.
+`check` exits 0 only when every checked partner is verified, so it can fail a CI job when a partner changes; `--network` (repeatable) checks only the named pins, for example the ones a scheduled job must keep verified.
 From this repository, run it as `node packages/passport/bin/agent-passport.mjs` after `pnpm --filter agent-passport build`.

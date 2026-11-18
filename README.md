@@ -30,7 +30,7 @@ The result is a passport page with one of four stamps.
 | Refused | Failed a fetch, size, format, structure or hidden-text check. It cannot load. |
 
 The pin is the idea that matters: a publisher's review travels with the link to every visitor, instead of living in one person's browser.
-The same check can run in CI (this repository ships an on-demand partner drift workflow; a real site would put it on a schedule), so a publisher can learn that a partner changed before a visitor does.
+The same check runs in CI: this repository's partner drift workflow checks the partner that must stay verified every day, and every pin on demand (the demo's changed partner fails that one by design), so a publisher can learn that a partner changed before a visitor does.
 
 ## Screenshots
 
