@@ -128,6 +128,15 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
     codedTools = { bundle: url.href, integrity: typeof coded.integrity === "string" && coded.integrity ? coded.integrity : null };
     if (!codedTools.integrity) checks.push({ id: "definition.code-integrity", status: "warn", category: "verified", title: "Code bundle has no integrity digest", detail: `Publisher declares ${url.href} without an SRI digest; the bundle's content is not checked.` });
   }
+  // runner.js runs at most min(max_steps, caller limit) model steps; a value below 1 means none at all.
+  for (const [where, value] of [["network", config.max_steps], ...agents.map((a) => [`agent ${String(a.name)}`, a.max_steps] as const)] as const) {
+    if (value !== undefined && (typeof value !== "number" || !Number.isInteger(value) || value < 1)) {
+      throw new PassportError("DEFINITION_SHAPE", `max_steps for the ${where} is ${JSON.stringify(value)}; it must be a whole number of at least 1.`);
+    }
+  }
+  if (config.cruse) {
+    checks.push({ id: "runtime.cruse", status: "info", category: "runtime", title: "Runtime adds its own UI instructions", detail: "This network turns on CRUSE, so the runtime appends its own CRUSE rendering instructions to each agent's prompt and offers a render_cruse tool. Those additions come from the runtime, not from the partner, and are not part of the instructions shown here." });
+  }
   const summaries: AgentSummary[] = [];
   for (const agent of agents) {
     if (typeof agent.name !== "string" || !agent.name.trim()) throw new PassportError("DEFINITION_SHAPE", "Every agent needs a non-empty string name.");
@@ -151,6 +160,7 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
       const target = (() => {
         try { return typeof args.url === "string" ? requireHttpUrl(args.url) : null; } catch { return null; }
       })();
+      if (args.method !== undefined && typeof args.method !== "string") throw new PassportError("DEFINITION_SHAPE", `REST toolbox agent ${name} has a non-string method; the runtime would fail when calling it.`);
       const method = typeof args.method === "string" ? args.method.toUpperCase() : "GET";
       if (!target) fail("DEFINITION_SHAPE", `definition.rest.${name}`, `REST toolbox agent ${name} has no valid http(s) args.url.`);
       else {
@@ -163,9 +173,20 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
       }
     }
     const tools = (Array.isArray(agent.tools) ? agent.tools : []).map(ref => classifyTool(ref, config, context.origin));
+    // runner.js names each tool with safeName(); two references with the same safe name overwrite each other.
+    const toolNames = new Map<string, string>();
+    if (config.cruse) toolNames.set("render_cruse", "the runtime's render_cruse tool");
     for (const tool of tools) {
       if (tool.kind === "missing") fail("MISSING_TOOL", `definition.tool.${name}.${tool.ref}`, `Agent ${name} references missing tool ${JSON.stringify(tool.ref)}.`);
       if (tool.origin) origins.add(tool.origin);
+      if (tool.kind === "mcp" && tool.mcpTools) {
+        checks.push({ id: `definition.mcp-restriction.${name}.${tool.ref}`, status: "warn", category: "verified", title: "MCP tool restriction not enforced", detail: `Agent ${name} declares only ${tool.mcpTools.join(", ") || "no"} tools from ${tool.ref}, but the reference runtime ignores that restriction and offers every tool the server lists.` });
+      }
+      if (tool.kind === "mcp") continue; // MCP tool names come from the server at run time.
+      const safe = safeToolName(tool.kind === "remote" ? remoteAgentName(tool.ref) : tool.ref);
+      const previous = toolNames.get(safe);
+      if (previous) fail("TOOL_NAME_COLLISION", `definition.tool-name.${name}.${safe}`, `Agent ${name} has two tools the runtime would both call ${safe}: ${previous} and ${JSON.stringify(tool.ref)}. One would silently replace the other.`);
+      else toolNames.set(safe, JSON.stringify(tool.ref));
     }
     const allow = object(agent.allow);
     const down = object(allow.to_downstream).sly_data;
@@ -184,6 +205,8 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
     if (typeof target !== "string") throw new PassportError("DEFINITION_SHAPE", `Link ${slot} must be a string URL.`);
     links[slot] = target;
     if (target) {
+      // Engine.resolveLink accepts only an absolute http(s) URL for a link binding.
+      if (!/^https?:\/\//i.test(target)) throw new PassportError("DEFINITION_SHAPE", `Link ${slot} is bound to ${JSON.stringify(target)}, which is not an absolute http(s) URL; the runtime would refuse it.`);
       origins.add(contactOrigin(target, context.origin));
     }
   }
@@ -192,4 +215,15 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
     agents: summaries, origins: [...origins].sort(), links, codedTools,
     declared: { brand: typeof manifest.brand === "string" ? manifest.brand : null, description: typeof entry.description === "string" ? entry.description : typeof manifest.description === "string" ? manifest.description : null, llmRouter: manifest.llm_router ?? null, peerPolicy: manifest.peer_policy ?? null, allowedPeers: stringList(manifest.allowed_peers), sampleQueries: stringList(entry.sample_queries ?? manifest.sample_queries) },
   };
+}
+
+/** runner.js safeName: the tool name a reference becomes in the model's tool list. */
+export function safeToolName(s: string): string {
+  return s.replace(/[^A-Za-z0-9_]/g, "_").replace(/^_+/, "").slice(0, 60) || "tool";
+}
+
+/** kernel.js parseExternalAgent(...).agentName for a remote reference: its path without the leading slash. */
+function remoteAgentName(ref: string): string {
+  if (ref.startsWith("/")) return ref.replace(/^\//, "");
+  try { return new URL(ref).pathname.replace(/^\//, ""); } catch { return ref; }
 }

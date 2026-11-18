@@ -45,7 +45,7 @@ describe("inspection and runtime structure", () => {
   });
   it("classifies internal, external, slash, MCP and link references with every origin", async () => {
     const m = { ...manifest(), coded_tools: { bundle: "https://code.example/bundle.js", integrity: "sha256-x" } };
-    const d = { tools: [{ name: "desk", instructions: "help", tools: ["worker", "https://remote.example/net", "/own", "//own", "https://mcp.example/server", { url: "https://descriptor.example/api", tools: ["search"] }, "slot"] }, { name: "worker", class: "Worker" }], link_slots: { slot: {} }, links: { slot: "https://old.example/net" } };
+    const d = { tools: [{ name: "desk", instructions: "help", tools: ["worker", "https://remote.example/net", "/own", "//own2", "https://mcp.example/server", { url: "https://descriptor.example/api", tools: ["search"] }, "slot"] }, { name: "worker", class: "Worker" }], link_slots: { slot: {} }, links: { slot: "https://old.example/net" } };
     const r = await inspect(m, d, { networks: { transit: { slot: "https://linked.example/net" } } });
     expect(r.verdict).toBe("unreviewed");
     expect(r.network?.agents[0]?.tools.map(t => t.kind)).toEqual(["agent", "remote", "remote", "remote", "mcp", "mcp", "link"]);
@@ -90,7 +90,11 @@ describe("inspection and runtime structure", () => {
     const m = manifest(); m.networks[0]!.hocon = "http://other.example/net.json";
     expect(codes(await inspect(m, definition(), undefined, { confirmDestination: async () => true }))).toContain("HTTPS_REQUIRED");
   });
-  it.each([() => new Response(null, { status: 302, headers: { Location: "https://elsewhere.example/links" } }), () => new Response('not JSON'), () => new Response('{"x":1,"x":2}'), () => new Response(null, { status: 500 })])("treats any links failure as info and no published links", async response => {
+  it.each(['not JSON', '{"x":1,"x":2}'])("refuses a links.json that answers 200 with an unusable body %j", async body => {
+    const r = await inspectPeer(peer, { fetch: fakeFetch({ ...routes(), "https://peer.example/agents/links.json": () => new Response(body) }) });
+    expect(r.verdict).toBe("refused");
+  });
+  it.each([() => new Response(null, { status: 302, headers: { Location: "https://elsewhere.example/links" } }), () => new Response(null, { status: 500 })])("treats a links.json that does not answer 200 as no published links", async response => {
     const r = await inspectPeer(peer, { fetch: fakeFetch({ ...routes(), "https://peer.example/agents/links.json": response }) });
     expect(r.verdict).toBe("unreviewed");
     expect(r.artifacts.links).toBeUndefined();

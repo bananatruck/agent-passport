@@ -76,13 +76,20 @@ export async function inspectPeer(input: string, options: InspectOptions = {}): 
     const definitionArtifact = await fetchArtifact(definitionUrl.href, "definition", ctx);
     report.artifacts.definition = definitionArtifact;
     pass(stage, "Definition fetched", `Fetched ${definitionArtifact.bytes} bytes without redirects, credentials or referrer.`);
+    // The runtime parses definitions with its own HOCON parser, which reads the JSON escapes
+    // \b and \f as the plain letters b and f. Refuse them so both parsers agree.
+    if (/(^|[^\\])(\\\\)*\\[bf]/.test(definitionArtifact.text)) {
+      throw new PassportError("DEFINITION_SHAPE", "The definition uses the \\b or \\f escape, which the runtime's HOCON parser reads as a plain letter, so the runtime would run different text from the text checked here.");
+    }
     stage = "definition.json";
     const definition = parseStrictJson(definitionArtifact.text, limits);
     if (!isObject(definition)) throw new PassportError("DEFINITION_SHAPE", "Definition must be a JSON object.");
     let published: JsonValue = {};
+    let linksAnswered = false;
     stage = "fetch.links";
     try {
       const artifact = await fetchArtifact(resolveUrl(parsed.siteBase, "/links.json"), "links", ctx);
+      linksAnswered = artifact.status === 200;
       if (artifact.status === 200) {
         const doc = parseStrictJson(artifact.text, limits);
         published = ownJsonValue(ownJsonValue(doc, "networks"), parsed.networkName) || {};
@@ -92,6 +99,7 @@ export async function inspectPeer(input: string, options: InspectOptions = {}): 
       report.artifacts.links = artifact;
       report.checks.push({ id: stage, status: "info", category: "verified", title: artifact.status === 404 ? "No published links" : "Published links read", detail: artifact.status === 404 ? "links.json returned 404; the runtime uses no published bindings." : "The selected links.json entry is merged before runtime substitutions." });
     } catch (error) {
+      if (linksAnswered) throw new PassportError(error instanceof PassportError ? error.code : "DEFINITION_SHAPE", `links.json exists but cannot be used: ${error instanceof Error ? error.message : String(error)} The runtime's own parser might read it differently, so it is refused.`);
       published = {};
       report.checks.push({ id: stage, status: "info", category: "verified", title: "Published links unavailable", detail: `${error instanceof PassportError ? error.code + ": " : ""}${error instanceof Error ? error.message : String(error)} The runtime uses no published bindings; the guard must serve a 404.` });
     }
@@ -102,7 +110,16 @@ export async function inspectPeer(input: string, options: InspectOptions = {}): 
     report.checks.push(...mergeHiddenText([...hiddenTextChecks(manifest, "manifest"), ...hiddenTextChecks(definition, "raw definition"), ...hiddenTextChecks(effective.tools, "effective agents")]), ...instructionSignals(report.network.agents));
     stage = "digests";
     // The brand is shown as the card heading, so a change to it must break the pin too.
-    const manifestEntry = await sha256Hex(canonicalJson({ entry, coded_tools: manifest.coded_tools ?? null, brand: manifest.brand ?? null }));
+    const manifestEntry = await sha256Hex(canonicalJson({
+      entry,
+      coded_tools: manifest.coded_tools ?? null,
+      brand: manifest.brand ?? null,
+      // The runtime enforces these per hop, so loosening them after review must break the pin.
+      peer_policy: manifest.peer_policy ?? null,
+      web_policy: manifest.web_policy ?? null,
+      allowed_peers: manifest.allowed_peers ?? null,
+      actions: manifest.actions ?? null,
+    }));
     const definitionDigest = await sha256Hex(canonicalJson(effective));
     const links = await sha256Hex(canonicalJson(published));
     report.digest = { manifestEntry, definition: definitionDigest, links, combined: await sha256Hex(canonicalJson({ manifestEntry, definition: definitionDigest, links })) };

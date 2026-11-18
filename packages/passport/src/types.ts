@@ -30,7 +30,8 @@ export type PassportCode =
   | "HIDDEN_TEXT"
   | "DESTINATION_DECLINED"
   | "PIN_FILE_INVALID"
-  | "UNCONSENTED_CONTACT";
+  | "UNCONSENTED_CONTACT"
+  | "TOOL_NAME_COLLISION";
 
 /** Byte, time and structure limits. All have defaults (see DEFAULT_LIMITS). */
 export interface Limits {
@@ -138,7 +139,7 @@ export interface NetworkSummary {
 }
 
 export interface Digests {
-  /** sha256 of canonical JSON of { entry, coded_tools, brand } from the manifest. */
+  /** sha256 of canonical JSON of { entry, coded_tools, brand, peer_policy, web_policy, allowed_peers, actions } from the manifest. */
   manifestEntry: string;
   /** sha256 of canonical JSON of the effective definition (after {token} substitution). */
   definition: string;
