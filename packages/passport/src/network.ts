@@ -137,8 +137,11 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
     if (agent.instructions !== undefined && typeof agent.instructions !== "string") throw new PassportError("DEFINITION_SHAPE", `Instructions for ${name} must be a string.`);
     if (agent.description !== undefined && typeof agent.description !== "string") throw new PassportError("DEFINITION_SHAPE", `Description for ${name} must be a string.`);
     if (agent.tools !== undefined && !Array.isArray(agent.tools)) throw new PassportError("DEFINITION_SHAPE", `Tools for ${name} must be an array.`);
+    // Strict: any class key needs a declared bundle. But decide "REST toolbox" exactly as the
+    // runtime's classify_tool does (truthy class first, then truthy toolbox), so a falsy class
+    // such as null cannot hide a toolbox call the runtime will still make.
     const coded = Object.hasOwn(agent, "class");
-    const rest = !coded && Object.hasOwn(agent, "toolbox");
+    const rest = !agent.class && !!agent.toolbox;
     if (coded && !codedTools) fail("UNDECLARED_CODE", `definition.code.${name}`, `Agent ${name} declares executable code without coded_tools.bundle.`);
     if (rest) {
       // runner.js dispatchRest fetches args.url with no consent prompt and no allowed_peers check,
@@ -171,7 +174,7 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
     if (agent.command !== undefined && typeof agent.command !== "string") throw new PassportError("DEFINITION_SHAPE", `Command for ${name} must be a string.`);
     // Mirror runner.js: the system prompt is the trimmed instructions, then the trimmed command.
     const instructions = [agent.instructions, agent.command].filter((s): s is string => typeof s === "string" && !!s.trim()).map(s => s.trim()).join("\n\n");
-    summaries.push({ name, description: typeof agent.description === "string" ? agent.description : "", instructions, instructionsSha256: await sha256Hex(instructions), tools, type: coded ? "coded" : rest ? "rest" : instructions ? "llm" : "other", allowSly: { toDownstream: stringList(down), toUpstream: stringList(up) } });
+    summaries.push({ name, description: typeof agent.description === "string" ? agent.description : "", instructions, instructionsSha256: await sha256Hex(instructions), tools, type: rest ? "rest" : coded ? "coded" : instructions ? "llm" : "other", allowSly: { toDownstream: stringList(down), toUpstream: stringList(up) } });
   }
   const front = runtimeFrontMan(agents);
   if (front !== entry.front_man) fail("FRONT_MAN_MISMATCH", "definition.front-man", `Manifest front_man ${JSON.stringify(entry.front_man)} differs from runtime front agent ${JSON.stringify(front)}.`);
