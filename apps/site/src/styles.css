@@ -130,3 +130,24 @@ textarea:focus-visible,
     animation: shine var(--duration, 14s) infinite linear;
   }
 }
+
+/* Agent Passport card fonts follow the page's fonts. */
+:root {
+  --ap-font-display: var(--font-display);
+  --ap-font-body: var(--font-sans);
+  --ap-font-mono: var(--font-mono);
+}
+
+/* The reference runtime's chat is themed through its --ns-* custom properties, without editing it. */
+.desk-runtime {
+  --ns-primary: var(--ap-ink);
+  --ns-accent: var(--ap-unreviewed);
+  --ns-bg: var(--ap-bg);
+  --ns-fg: var(--ap-text);
+  --ns-muted: color-mix(in srgb, var(--ap-text) 60%, transparent);
+  --ns-border: var(--ap-guilloche);
+  --ns-panelbg: var(--ap-paper);
+  --ns-font: var(--font-sans);
+  --ns-railw: 230px;
+  min-width: 0;
+}

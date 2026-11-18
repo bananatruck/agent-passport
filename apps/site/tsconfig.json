@@ -8,8 +8,9 @@
     "strict": true,
     "noEmit": true,
     "isolatedModules": true,
+    "resolveJsonModule": true,
     "skipLibCheck": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "../../packages/passport/src/types.ts"]
+  "include": ["src"]
 }
