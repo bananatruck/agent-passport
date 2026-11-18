@@ -20,7 +20,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-      - run: pnpm typecheck
+      # The site imports the library's built types, so build the library first.
       - run: pnpm --filter agent-passport build
+      - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
