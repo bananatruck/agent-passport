@@ -43,9 +43,9 @@ The demo site is itself a conforming agentic website: its own trip-desk agent ne
 
 Agent Passport never says a network is safe.
 It says one of four things, and each one has an exact meaning:
-`verified`: the network was fetched from the requested origin without redirects, passed every structural check, and its effective content is byte-for-byte the content the caller site's publisher pinned on the stated date.
-`unreviewed`: the network passed every structural check, but the caller site's publisher has not pinned it, so the visitor sees the full card and must approve loading explicitly.
-`changed`: the network passed the structural checks, but its effective content differs from the pin; the card lists what changed and the guard refuses to load it by default.
+`verified`: the network was fetched from the requested origin without redirects, no check failed (warnings may be listed), and the SHA-256 digests of its effective content (canonical JSON after the runtime's substitutions) equal the ones the caller site's publisher pinned on the stated date.
+`unreviewed`: no check failed, but the caller site's publisher has not pinned it, so the visitor sees the full card and must approve loading explicitly.
+`changed`: no check failed, but its effective content differs from the pin; the card lists what changed and the guard refuses to load it by default.
 `refused`: a fetch, size, format, structure or hidden-text check failed, so the network cannot load at all.
 
 ### 4.2 Verified by Agent Passport
@@ -58,10 +58,10 @@ Each artifact has a byte limit enforced while streaming (manifest 256 KiB, defin
 Bodies must be valid UTF-8 and strict JSON, with no duplicate keys at any depth, nesting at most 64 levels and at most 20,000 keys in total.
 The manifest has a `networks` entry whose `name` exactly equals the requested network name, with string `front_man` and `hocon` values; no other entry is ever selected.
 The definition URL is resolved against the site base; a definition on a different origin is a new destination that needs its own consent before it is fetched.
-The definition has a non-empty `tools` array, every agent has a non-empty unique name after trimming, every tool reference resolves to an internal agent, an HTTP(S) or `/`-prefixed external network, an MCP reference, or a declared link slot, and the runtime's derived front agent equals the manifest's `front_man`.
-An agent with `class` or `toolbox` is an executable definition: it is refused unless the manifest declares a `coded_tools` bundle, and the card says whether that bundle has an SRI digest.
+The definition has a non-empty `tools` array, every agent has a non-empty unique name after trimming, every tool reference is classifiable as an internal agent, an HTTP(S) or `/`-prefixed external network, an MCP reference, or a declared link slot, and the runtime's derived front agent equals the manifest's `front_man`.
+An agent with `class` or `toolbox` is an executable definition: it is refused unless the manifest declares a `coded_tools` bundle, and the card warns when that bundle has no SRI digest; the bundle itself is fetched later by the runtime and is not checked by Agent Passport.
 Effective instructions are computed with the same `{token}` substitution the runtime applies, and those are the texts that are hashed, diffed and shown.
-Instructions, descriptions and names that contain bidirectional override characters or Unicode tag characters (the "ASCII smuggling" block U+E0000 to U+E007F) are refused, and the hidden text is decoded and shown.
+Any string in the manifest or the definition (including names, descriptions, the brand and instructions) that contains bidirectional control characters or Unicode tag characters (the "ASCII smuggling" block U+E0000 to U+E007F) are refused, and the hidden text is decoded and shown.
 The digests are SHA-256 over the canonical JSON of the selected manifest entry plus `coded_tools`, over the canonical JSON of the effective definition, and over the canonical JSON of the peer's `links.json` entry for that network, because the runtime merges that file into the network.
 In the runtime guard, the runtime compiles exactly the bytes Agent Passport verified (no second fetch), and the guard checks that the runtime's HOCON parser reads those bytes as the same value JSON.parse does.
 
@@ -96,10 +96,10 @@ function comparePin(report: PassportReport, pin: PinEntry): { status: "match" | 
 function findPin(pins: PinFile | null | undefined, networkUrl: string): PinEntry | null;
 function parsePinFile(text: string): PinFile; // validates shape, throws PassportError on bad input
 function installPassportGuard(engine: NsdeployEngine, options: GuardOptions): GuardHandle;
-// <agent-passport-card> custom element: set .report, listens for no input, emits "passport-decision" with detail { decision: "load" | "decline" }.
+// <agent-passport-card> custom element: set .report (and optionally .decide = true); in decide mode it emits "passport-decision" with detail { decision: "load" | "decline" }.
 ```
 
-`InspectOptions` has `fetch` (injectable), `pins`, `limits`, `allowLoopbackHttp` (default true), `confirmDestination(origin, purpose)` for any extra origin such as a cross-origin definition (default: refuse), and `now`.
+`InspectOptions` has `fetch` (injectable), `pins`, `limits`, `allowLoopbackHttp` (default true), `confirmDestination({ origin, url, purpose })` for any extra origin such as a cross-origin definition (default: refuse), and `now`.
 `PassportReport` has `verdict`, a one-sentence `summary`, `checks` (each with `id`, `status` pass, fail, warn or info, `category` verified, runtime, declared, signal or not-checked, `title`, `detail`), the parsed `network` summary (agents with effective instructions and their digests, tool references, every origin the network may contact, private-context allow rules, coded tools), `artifacts` (URL, origin, byte length, digest), `digest`, and `pin` (`status` match, mismatch or none, plus `changes`).
 `PinFile` is `{ "version": 1, "pins": PinEntry[] }`, and a `PinEntry` stores the network URL, label, review date, reviewer, digests and a small snapshot (front agent, per-agent instruction digests and tool lists, origins, allow rules) so a later mismatch can be explained without storing the old text.
 Errors carry stable codes such as `URL_INVALID`, `HTTPS_REQUIRED`, `REDIRECT_REFUSED`, `TOO_LARGE`, `TIMEOUT`, `NOT_JSON`, `DUPLICATE_KEY`, `NO_SUCH_NETWORK`, `FRONT_MAN_MISMATCH`, `DUPLICATE_AGENT`, `MISSING_TOOL`, `UNDECLARED_CODE`, `HIDDEN_TEXT`, `DESTINATION_DECLINED`.

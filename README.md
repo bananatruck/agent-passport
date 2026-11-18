@@ -24,19 +24,27 @@ The result is a passport page with one of four stamps.
 
 | Stamp | Exact meaning |
 | --- | --- |
-| Verified | Fetched without redirects, passed every check, and identical (SHA-256) to the version this site's publisher pinned. Not a promise that the agents are harmless. |
-| Unreviewed | Passed every check, but this site's publisher has not pinned it. The visitor decides whether to load it. |
-| Changed | Passed the checks, but differs from the pinned version. The card lists what changed, and the guard does not load it. |
+| Verified | Fetched without redirects, no check failed (warnings may be listed), and identical by SHA-256 to the version this site's publisher pinned. Not a promise that the agents are harmless. |
+| Unreviewed | No check failed, but this site's publisher has not pinned it. The visitor decides whether to load it. |
+| Changed | No check failed, but it differs from the pinned version. The card lists what changed, and the guard does not load it. |
 | Refused | Failed a fetch, size, format, structure or hidden-text check. It cannot load. |
 
 The pin is the idea that matters: a publisher's review travels with the link to every visitor, instead of living in one person's browser.
-The same check runs in CI, so a publisher learns that a partner changed before a visitor does.
+The same check can run in CI (this repository ships an on-demand partner drift workflow; a real site would put it on a schedule), so a publisher can learn that a partner changed before a visitor does.
+
+## Screenshots
+
+| The live demo | The Inspector | On a phone |
+| --- | --- | --- |
+| ![Three partner passports after one request: Verified, Changed, Refused](docs/screenshots/desktop-demo.png) | ![The Inspector refusing Gull Deals and decoding its hidden text](docs/screenshots/desktop-inspector.png) | ![The demo at 390 pixels wide](docs/screenshots/phone-demo.png) |
+
+All screenshots come from `node scripts/e2e.mjs --screenshots`, which drives the real demo in Chromium.
 
 ## What is checked, and what is not
 
 Every line on the card says who stands behind it.
 
-- Checked by Agent Passport: no redirects (a browser hides where a redirect goes, and the spec treats a cross-origin redirect as a new destination); HTTPS outside loopback; no credentials or referrer sent; byte limits enforced while streaming; timeouts; strict UTF-8 JSON with no duplicate keys; the exact network name; a front agent that matches what the runtime will actually run; unique agent names; every tool reference resolvable; no undeclared executable code; no bidirectional-override or invisible Unicode tag characters (the hidden text is decoded and shown); SHA-256 digests of the effective network, including `{token}` substitutions and the partner's `links.json`.
+- Checked by Agent Passport: no redirects (a browser hides where a redirect goes, and the spec treats a cross-origin redirect as a new destination); HTTPS outside loopback; no credentials or referrer sent; byte limits enforced while streaming; timeouts; strict UTF-8 JSON with no duplicate keys; the exact network name; a front agent that matches what the runtime will actually run; unique agent names; every tool reference classifiable the way the runtime classifies it; no executable agent without a declared code bundle (the bundle itself is fetched later by the runtime and is not checked); no bidirectional controls or invisible Unicode tag characters anywhere in the manifest or definition (the hidden text is decoded and shown); SHA-256 digests of the effective network, including `{token}` substitutions and the partner's `links.json`.
 - Enforced by the reference runtime, not by Agent Passport: the partner runs on your router and model, never receives your key, stays within your step limit, and sees private context only through your allow rules.
 - Stated by the partner, not verified: brand, descriptions, the router it names, its peer policy.
 - Signals, not proof: instructions that ask for passwords, keys or card numbers, tell the model to ignore earlier instructions, or act without telling the visitor.
@@ -46,12 +54,12 @@ The full threat model is in [docs/SPEC.md](docs/SPEC.md).
 
 ## Gaps in the reference runtime that Agent Passport closes
 
-These come from reading the runtime's source (`apps/site/public/runtime/`, vendored unmodified), and each one has a test.
+These come from reading the runtime's source (`apps/site/public/runtime/`, vendored unmodified), and each one is closed by a check that has a test.
 
 - It runs the first agent that has instructions and does not compare it with the manifest's `front_man`.
 - It rewrites every string through `commondefs.replacement_strings`, so the raw JSON a reviewer reads is not what the model reads.
 - It keeps the last of two agents with the same name instead of rejecting the network.
-- It parses definitions with its own HOCON parser, so a document with duplicate keys can mean one thing to a checker and another to the runtime.
+- It parses definitions with its own HOCON parser, which merges duplicate keys where a JSON parser keeps the last one, so one document can mean one thing to a checker and another to the runtime.
 - It fetches peer files with default `fetch`: redirects are followed to any origin, with no size limit or timeout.
 - A partner's files could change between a check and the runtime's own fetch; the guard makes the runtime compile exactly the verified bytes.
 

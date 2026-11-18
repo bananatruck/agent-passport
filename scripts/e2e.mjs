@@ -91,7 +91,7 @@ async function runViewport(browser, { name, width, height }) {
     ["Verified", "Changed", "Refused"].every((v) => verdicts.includes(v)),
     `${name}: demo shows Verified, Changed and Refused passports (got ${verdicts.join(", ")})`,
   );
-  await page.locator("[data-demo-passports]").scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.querySelector("[data-demo-passports]")?.scrollIntoView({ block: "start" }));
   await shot(page, `${name}-demo`);
 
   // Inspector: the hostile partner, then a server-only hazard.

@@ -63,19 +63,19 @@ const VERDICT_DEFINITIONS: readonly {
     verdict: "verified",
     title: "Verified",
     colorVar: "var(--ap-verified)",
-    body: "The network was fetched from the requested origin without redirects, passed every structural check, and its effective content matches the SHA-256 digest the caller site's publisher pinned on the stated date.",
+    body: "The network was fetched from the requested origin without redirects, no check failed (warnings may be listed), and the SHA-256 digests of its effective content match the ones the caller site's publisher pinned on the stated date.",
   },
   {
     verdict: "unreviewed",
     title: "Unreviewed",
     colorVar: "var(--ap-unreviewed)",
-    body: "The network passed every structural check, but the caller site's publisher has not pinned it in passports.json, so the visitor sees the full passport page and decides whether to load it.",
+    body: "No check failed (warnings may be listed), but the caller site's publisher has not pinned it in passports.json, so the visitor sees the full passport page and decides whether to load it.",
   },
   {
     verdict: "changed",
     title: "Changed",
     colorVar: "var(--ap-changed)",
-    body: "The network passed the structural checks, but its effective content differs from the publisher's pin; the passport page lists what changed and the runtime guard holds the network by default.",
+    body: "No check failed, but its effective content differs from the publisher's pin; the passport page lists what changed and the runtime guard holds the network by default.",
   },
   {
     verdict: "refused",
@@ -90,7 +90,7 @@ const BOUNDARY_ROWS = [
     category: "Verified by Agent Passport (SPEC 4.2)",
     source: "Checked directly by Agent Passport before compilation",
     covered:
-      'Fetches <site base>/agent-manifest.json, the network definition, and links.json over HTTPS (or loopback HTTP in local dev) with credentials: "omit", no referrer, cache bypassed, no redirects followed, streaming byte caps (256 KiB manifest, 1 MiB definition, 64 KiB links), and an 8-second timeout; enforces valid UTF-8 and strict JSON with no duplicate keys, max depth 64, and max 20,000 keys; verifies exact network name match, front_man equality with the runtime\'s derived front agent, unique trimmed agent names, resolved tool references, declared coded_tools with optional SRI status, {token} replacement on instructions, absence of bidirectional overrides or Unicode tag characters U+E0000 to U+E007F (decoding any hidden text), canonical SHA-256 digests, and single-fetch compilation parity with the runtime\'s HOCON parser.',
+      'Fetches <site base>/agent-manifest.json, the network definition, and links.json over HTTPS (or loopback HTTP in local dev) with credentials: "omit", no referrer, cache bypassed, no redirects followed, streaming byte caps (256 KiB manifest, 1 MiB definition, 64 KiB links), and an 8-second timeout; enforces valid UTF-8 and strict JSON with no duplicate keys, max depth 64, and max 20,000 keys; verifies exact network name match, front_man equality with the runtime\'s derived front agent, unique trimmed agent names, tool references the runtime can classify, executable agents only with a declared coded_tools bundle (the bundle itself is fetched later by the runtime and not checked), {token} replacement on instructions, no bidirectional controls or Unicode tag characters U+E0000 to U+E007F anywhere in the manifest or definition (decoding any hidden text), canonical SHA-256 digests of the effective content, and, in the runtime guard, that the runtime compiles exactly the verified bytes and its HOCON parser reads them as JSON does.',
   },
   {
     category: "Enforced by the runtime (SPEC 4.3)",
@@ -311,8 +311,8 @@ export function App() {
             <p className="max-w-[65ch] text-base leading-relaxed text-(--ap-text)/90">
               Agent Passport fetches a linked partner network, checks its
               structure and hidden text against the Open Agentic Web MVP
-              specification, and compares its effective bytes against the
-              version the site publisher pinned.
+              specification, and compares SHA-256 digests of what the model
+              will read with the version the site publisher pinned.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <a
@@ -388,8 +388,8 @@ export function App() {
               <p className="leading-relaxed text-(--ap-text)">
                 Open the model configuration panel inside the trip desk runtime
                 to enter a key for OpenRouter, Otari, or any OpenAI-compatible
-                router that allows browser requests; your key stays in your
-                browser and is never sent to a partner network.
+                router that allows browser requests; your key is sent only to
+                the router you choose, never to a partner network.
               </p>
             </div>
           </div>
@@ -616,8 +616,8 @@ export function App() {
                 </h3>
                 <p className="mt-1 text-sm leading-relaxed text-(--ap-text)/90">
                   Ship passports.json alongside your site so every visitor&apos;s
-                  browser compares the live partner against the exact bytes you
-                  reviewed.
+                  browser compares SHA-256 digests of the live partner&apos;s
+                  effective content with the ones you reviewed.
                 </p>
               </li>
               <li className="rounded-lg border border-(--ap-guilloche) bg-(--ap-paper) p-4">
@@ -738,9 +738,9 @@ export function App() {
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 text-xs text-(--ap-text)/85 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p>
-              Agent Passport and Tidewater Trip Desk are open source under the
-              MIT License, with the vendored reference runtime under the Apache
-              2.0 License.
+              MIT for this project&apos;s own code. Some UI component files
+              keep their own licenses (see docs/CREDITS.md), and the vendored
+              reference runtime is Apache 2.0.
             </p>
             <p className="font-semibold">
               Built on the Worldwide Agentic Web MVP Profile 0.2 reference
@@ -748,17 +748,23 @@ export function App() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-5 font-semibold">
-            <a
-              href="https://github.com/cognizant-ai-labs/agentic-web"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-(--ap-text) hover:underline"
-            >
-              <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Read the build specification (docs/SPEC.md)</span>
-            </a>
-            <span>Read the site copy inventory (docs/COPY.md)</span>
-            <span>Read the UI component credits (docs/CREDITS.md)</span>
+            {[
+              ["Source code", "https://github.com/bananatruck/agent-passport"],
+              ["Build spec and threat model", "https://github.com/bananatruck/agent-passport/blob/main/docs/SPEC.md"],
+              ["UI component credits", "https://github.com/bananatruck/agent-passport/blob/main/docs/CREDITS.md"],
+              ["The Open Agentic Web spec", "https://github.com/cognizant-ai-labs/agentic-web/blob/main/docs/worldwide_agentic_web_mvp_spec.md"],
+            ].map(([label, href]) => (
+              <a
+                key={href}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-(--ap-text) hover:underline"
+              >
+                <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{label}</span>
+              </a>
+            ))}
           </div>
         </div>
       </footer>
