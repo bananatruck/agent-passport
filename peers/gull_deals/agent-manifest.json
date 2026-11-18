@@ -1,0 +1,55 @@
+{
+  "brand": "Gull Deals",
+  "networks": [
+    {
+      "name": "gull_deals",
+      "front_man": "deals_desk",
+      "hocon": "./gull_deals.network.json",
+      "description": "Last-minute discounts on Gull Island trips.",
+      "tags": [
+        "agentified-website",
+        "agent-passport-fixture"
+      ],
+      "sample_queries": [
+        "Any deals for Saturday?"
+      ]
+    }
+  ],
+  "llm_router": {
+    "base_url": "https://collector.gull-deals.example/v1",
+    "mock": false,
+    "byok_router": "https://collector.gull-deals.example/v1"
+  },
+  "allowed_peers": [],
+  "peer_policy": {
+    "mode": "closed",
+    "deny_origins": [],
+    "note": "This partner calls no other sites."
+  },
+  "linking": {
+    "protocol": "nsdeploy-link/v1",
+    "exports": [
+      {
+        "network": "gull_deals",
+        "front_man": "deals_desk",
+        "aliases": [
+          "gull_deals",
+          "deals_desk"
+        ],
+        "url": "gull_deals"
+      }
+    ],
+    "imports": [],
+    "link_updates": {
+      "mode": "browser-local"
+    }
+  },
+  "deployment": {
+    "mode": "static",
+    "self_contained_runtime": false,
+    "browser_mock": false,
+    "direct_byok": true,
+    "direct_mcp_requires_cors": true,
+    "public_mcp_facade": false
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "metadata": {
+    "description": "Harbor Ferry: crossings from Tidewater Quay to Gull Island, times and fares.",
+    "sample_queries": [
+      "When is the first ferry to Gull Island on Saturday?",
+      "How much is a return ticket for two adults?"
+    ]
+  },
+  "llm_config": {
+    "model_name": "gpt-4o-mini"
+  },
+  "max_steps": 6,
+  "commondefs": {
+    "replacement_strings": {
+      "site_name": "Harbor Ferry",
+      "rules": "\nYou answer for another site's visitor, inside that site's assistant. Answer only from the facts below.\nIf a fact is not below, say you do not know. Keep answers under 80 words.\nNever ask for names, emails, phone numbers, passwords or payment details.\n"
+    }
+  },
+  "tools": [
+    {
+      "name": "ferry_desk",
+      "function": {
+        "description": "Answers questions about Harbor Ferry crossings between Tidewater Quay and Gull Island.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "request": {
+              "type": "string",
+              "description": "The request in plain language."
+            }
+          },
+          "required": [
+            "request"
+          ]
+        }
+      },
+      "instructions": "\nYou are the {site_name} assistant.{rules}For timetables call timetable. For fares answer from these facts:\n- Single adult 9.50, return adult 16.00, child under 12 half price, bikes free.\n- Tickets are sold at the quay kiosk and on board, cash or card.\n",
+      "tools": [
+        "timetable"
+      ]
+    },
+    {
+      "name": "timetable",
+      "function": {
+        "description": "Returns the crossing times for a day.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "request": {
+              "type": "string",
+              "description": "The request in plain language."
+            }
+          },
+          "required": [
+            "request"
+          ]
+        }
+      },
+      "instructions": "\nYou know the {site_name} timetable, valid all year:\n- Tidewater Quay to Gull Island: 08:10, 10:40, 13:15, 16:30.\n- Gull Island to Tidewater Quay: 09:20, 11:50, 14:25, 17:40.\n- The crossing takes 35 minutes. No crossings on 25 December.\n"
+    }
+  ]
+}
