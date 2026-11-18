@@ -1,0 +1,28 @@
+name: Partner drift check
+
+# Re-inspects every partner pinned in apps/site/public/passports.json against the live
+# partner files. It fails while any partner differs from its pinned review, so the
+# site's publisher hears about a change before a visitor does.
+# In this demo the Tidewhistle Rooms partner changed on purpose, so this check fails
+# by design until the publisher reviews it again. That is why it runs only on demand here;
+# a real site would add a schedule, for example `schedule: [{ cron: "17 6 * * *" }]`.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter agent-passport build
+      - run: node packages/passport/bin/agent-passport.mjs check --file apps/site/public/passports.json
