@@ -1,6 +1,6 @@
 # Agent Passport
 
-Check a partner site's AI agents before they run in your visitor's browser, and keep checking that they are still the version you reviewed.
+Review a partner site's AI agents once, and have every visitor's browser check that they are still exactly the version you reviewed before they run.
 
 Live demo: https://bananatruck.github.io/agent-passport/
 

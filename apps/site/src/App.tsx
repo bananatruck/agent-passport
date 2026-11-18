@@ -82,13 +82,14 @@ export function App() {
               id="hero-heading"
               className="font-display text-4xl leading-[1.06] font-extrabold text-(--ap-text) sm:text-5xl"
             >
-              Check every partner agent network before it runs in your browser.
+              Review a partner's agents once. Every visitor's browser holds them to it.
             </h1>
             <p className="max-w-[65ch] text-base leading-relaxed text-(--ap-text)/90">
-              Agent Passport fetches a linked partner network, checks its
-              structure and hidden text against the Open Agentic Web MVP
-              specification, and compares SHA-256 digests of what the model
-              will read with the version the site publisher pinned.
+              A site&apos;s publisher pins the exact version of a partner&apos;s
+              agent network they reviewed. Before those agents run, Agent
+              Passport checks the live partner against the Open Agentic Web
+              spec and against that pin, in every visitor&apos;s browser, and
+              holds anything that changed or hides instructions.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <a
