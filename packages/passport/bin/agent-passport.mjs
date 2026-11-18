@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 const usage = {
   inspect: "inspect <url> [--json]\nInspect a peer without loading it. Exit 1 for refused or changed peers.\nExamples:\n  agent-passport inspect https://peer.example/agents/transit\n  agent-passport inspect http://127.0.0.1:8080/transit --json",
   pin: "pin <url> --file <path> [--label <text>] [--reviewed-by <text>] [--note <text>]\nCreate or replace a reviewed pin. Refused peers cannot be pinned.\nExamples:\n  agent-passport pin https://peer.example/agents/transit --file passports.json --label Transit\n  agent-passport pin https://peer.example/agents/transit --file passports.json --reviewed-by Publisher --note Reviewed",
-  check: "check --file <path> [--json]\nInspect every pinned peer. Exit 0 only when every peer is verified.\nExamples:\n  agent-passport check --file passports.json\n  agent-passport check --file passports.json --json",
+  check: "check --file <path> [--network <url> ...] [--json]\nInspect every pinned peer, or only the pinned peers named with --network (repeatable). Exit 0 only when every checked peer is verified.\nExamples:\n  agent-passport check --file passports.json\n  agent-passport check --file passports.json --network https://peer.example/agents/transit --json",
 };
 
 /** Human-readable lines for one report: verdict, summary, failed and flagged checks, changes. */
@@ -35,11 +35,18 @@ export async function runCli(argv, { api, stdout = text => process.stdout.write(
   try {
     const flags = new Map();
     const positional = [];
-    const allowed = command === "pin" ? ["--file", "--label", "--reviewed-by", "--note"] : command === "check" ? ["--file", "--json"] : ["--json"];
+    const networks = [];
+    const allowed = command === "pin" ? ["--file", "--label", "--reviewed-by", "--note"] : command === "check" ? ["--file", "--json", "--network"] : ["--json"];
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
       if (!arg.startsWith("-")) { positional.push(arg); continue; }
       if (!allowed.includes(arg)) throw new Error(`Unknown option ${arg}.`);
+      if (arg === "--network") {
+        const value = args[++i];
+        if (value === undefined || value.startsWith("--")) throw new Error("Missing value for --network.");
+        networks.push(value);
+        continue;
+      }
       if (flags.has(arg)) throw new Error(`Repeated option ${arg}.`);
       if (arg === "--json") { flags.set(arg, true); continue; }
       const value = args[++i];
@@ -72,8 +79,15 @@ export async function runCli(argv, { api, stdout = text => process.stdout.write(
       stdout(`Pinned ${pin.network} in ${file}\n`);
       return 0;
     }
+    const selected = networks.length
+      ? networks.map((url) => {
+          const pin = core.findPin(pins, url);
+          if (!pin) throw new Error(`${url} is not pinned in ${file}.`);
+          return pin;
+        })
+      : pins.pins;
     const reports = [];
-    for (const pin of pins.pins) reports.push(await core.inspectPeer(pin.network, { pins }));
+    for (const pin of selected) reports.push(await core.inspectPeer(pin.network, { pins }));
     stdout(flags.has("--json") ? JSON.stringify(reports, null, 2) + "\n" : reports.map(r => describe(r, r.input)).join(""));
     return reports.every(r => r.verdict === "verified") ? 0 : 1;
   } catch (error) {

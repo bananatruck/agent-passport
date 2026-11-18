@@ -87,3 +87,26 @@ describe("CLI commands with real core and filesystem", () => {
     expect(cli.output()).toContain("refused");
   });
 });
+
+describe("check --network", () => {
+  it("checks only the named pinned networks, so a schedule can watch the partners that must stay verified", async () => {
+    const cli = commands();
+    const file = join(directory, "pins.json");
+    expect(await cli.run(["pin", peer, "--file", file])).toBe(0);
+    // A second pin for a network that is not served: checking everything fails, checking only the first passes.
+    const pins = JSON.parse(await readFile(file, "utf8"));
+    pins.pins.push({ ...pins.pins[0], network: "https://peer.example/agents/gone" });
+    await writeFile(file, JSON.stringify(pins));
+    expect(await cli.run(["check", "--file", file])).toBe(1);
+    expect(await cli.run(["check", "--file", file, "--network", peer])).toBe(0);
+    expect(cli.output()).toContain("verified");
+    expect(cli.output()).not.toContain("gone");
+  });
+  it("refuses a --network that is not pinned in the file", async () => {
+    const cli = commands();
+    const file = join(directory, "pins.json");
+    expect(await cli.run(["pin", peer, "--file", file])).toBe(0);
+    expect(await cli.run(["check", "--file", file, "--network", "https://peer.example/agents/other"])).toBe(1);
+    expect(cli.error()).toContain("not pinned");
+  });
+});
