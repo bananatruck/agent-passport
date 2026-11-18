@@ -1,6 +1,6 @@
 {
   "source": "pages",
-  "recordedAt": "2026-11-18T08:52:54.206Z",
+  "recordedAt": "2026-11-18T22:48:04.308Z",
   "reports": {
     "harbor_ferry": {
       "version": 1,
@@ -180,23 +180,23 @@
         }
       },
       "digest": {
-        "manifestEntry": "524f5827c2bbdf200a522b3bce67023c6883c1bc344bd4023b5f9be0f42665f9",
+        "manifestEntry": "e1aa16531fb302ceb477bc022384289b5080313412e18d9aad90de85739d08cb",
         "definition": "c0d08ad2b28a63eabea487295a40b6ff061ea3a81e9efa97d7661a31a5e5ec86",
         "links": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-        "combined": "3f9349b8681b79ce390503a6eeb1c3e0f63bbc11586d7be55198d72b6b5a4dde"
+        "combined": "474df7c435e1f639be635fbebabbb318c7ef32495058007f2ed3159d6e1b22f1"
       },
       "pin": {
         "pin": {
           "network": "https://raw.githubusercontent.com/bananatruck/agent-passport/main/peers/harbor_ferry/harbor_ferry",
           "label": "Harbor Ferry",
-          "reviewedAt": "2026-11-18T08:52:54.112Z",
+          "reviewedAt": "2026-11-18T22:48:04.214Z",
           "reviewedBy": "Tidewater Trip Desk publisher",
           "note": "Timetable and fares only; calls no other sites.",
           "digest": {
-            "manifestEntry": "524f5827c2bbdf200a522b3bce67023c6883c1bc344bd4023b5f9be0f42665f9",
+            "manifestEntry": "e1aa16531fb302ceb477bc022384289b5080313412e18d9aad90de85739d08cb",
             "definition": "c0d08ad2b28a63eabea487295a40b6ff061ea3a81e9efa97d7661a31a5e5ec86",
             "links": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-            "combined": "3f9349b8681b79ce390503a6eeb1c3e0f63bbc11586d7be55198d72b6b5a4dde"
+            "combined": "474df7c435e1f639be635fbebabbb318c7ef32495058007f2ed3159d6e1b22f1"
           },
           "snapshot": {
             "frontMan": "ferry_desk",
@@ -229,7 +229,7 @@
         "status": "match",
         "changes": []
       },
-      "checkedAt": "2026-11-18T08:52:54.845Z"
+      "checkedAt": "2026-11-18T22:48:04.679Z"
     },
     "tidewhistle_rooms": {
       "version": 1,
@@ -400,23 +400,23 @@
         }
       },
       "digest": {
-        "manifestEntry": "21d6e7b75c99972f37209dd9d8fffaafa63a99e8b85c8164d34e570522991571",
+        "manifestEntry": "a7d93524452f0832c0a66c9c699fb307d94ccec835e29001465a7d787865c4a3",
         "definition": "36e04472793053b864185b8032ffabb92dc462cc7e2d77ac76c6f870825cc7de",
         "links": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-        "combined": "ac8d1436201cf1ea7ad7f8c57589214f75771228d510f86f1cb2ee4bd9b6e3c6"
+        "combined": "de87a5f57a72e3de5ddf6d30500abcb11aa69cfe04df4fca0af8d9a4889609e7"
       },
       "pin": {
         "pin": {
           "network": "https://raw.githubusercontent.com/bananatruck/agent-passport/main/peers/tidewhistle_rooms/tidewhistle_rooms",
           "label": "Tidewhistle Rooms",
-          "reviewedAt": "2026-11-18T08:52:54.119Z",
+          "reviewedAt": "2026-11-18T22:48:04.243Z",
           "reviewedBy": "Tidewater Trip Desk publisher",
           "note": "Rooms and prices; bookings by phone, no payment details in chat.",
           "digest": {
-            "manifestEntry": "21d6e7b75c99972f37209dd9d8fffaafa63a99e8b85c8164d34e570522991571",
+            "manifestEntry": "a7d93524452f0832c0a66c9c699fb307d94ccec835e29001465a7d787865c4a3",
             "definition": "a15371ae65688bdaa1d44c8b17a42579082e064b6e5a97a8267379b21fc369be",
             "links": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-            "combined": "13aae201d2aef039df49e6802d9a08e5a8d07fb6c5310b336db8bfb482489cb5"
+            "combined": "153904d6b6e065661c562829948d990f660a4798521a789706ae9eb2c7d364dc"
           },
           "snapshot": {
             "frontMan": "rooms_desk",
@@ -450,7 +450,7 @@
           }
         ]
       },
-      "checkedAt": "2026-11-18T08:52:55.485Z"
+      "checkedAt": "2026-11-18T22:48:05.107Z"
     },
     "gull_deals": {
       "version": 1,
@@ -660,17 +660,17 @@
         }
       },
       "digest": {
-        "manifestEntry": "b7d0765e9c9b3d1509be198c13ff9e1d8712479ec24537258a4b9048c93d2135",
+        "manifestEntry": "2e0f17e3280bf4b1c502cb8e55d0dfdbf35e1beed79c7d9b7f6265dd6befd877",
         "definition": "d1de1d1a15085f64371103b3d68509a41d7f0dca2a6925a4fc1ec975628ce0a4",
         "links": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-        "combined": "6db99da6579e6a666c9e832da05f5d9f3e30eb540374e9d9c466805d77c5daca"
+        "combined": "a917b327ae933ab137973581e36dd62b5aaee726bc153579611738dedb57edd7"
       },
       "pin": {
         "status": "none",
         "pin": null,
         "changes": []
       },
-      "checkedAt": "2026-11-18T08:52:56.141Z"
+      "checkedAt": "2026-11-18T22:48:05.503Z"
     }
   }
 }
