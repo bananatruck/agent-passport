@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "pins": [
+    {
+      "network": "https://raw.githubusercontent.com/bananatruck/agent-passport/main/peers/harbor_ferry/harbor_ferry",
+      "label": "Harbor Ferry",
+      "reviewedAt": "2026-11-18T08:17:40.933Z",
+      "reviewedBy": "Tidewater Trip Desk publisher",
+      "note": "Timetable and fares only; calls no other sites.",
+      "digest": {
+        "manifestEntry": "371d603439cca38fee3c4b677fb59191593bb278a9a3f8103565a7410c3f381a",
+        "definition": "c0d08ad2b28a63eabea487295a40b6ff061ea3a81e9efa97d7661a31a5e5ec86",
+        "links": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "combined": "26292d9789f80371946db85f1657cd44279737feee4fadefadbdb0520f9d233d"
+      },
+      "snapshot": {
+        "frontMan": "ferry_desk",
+        "agents": [
+          {
+            "name": "ferry_desk",
+            "instructionsSha256": "e1a4ad1bd0b31f04fbb95933ae298caf82bd5429e598f6bbe7149119931cd551",
+            "tools": [
+              "{\"kind\":\"agent\",\"ref\":\"timetable\"}"
+            ],
+            "allowSly": {
+              "toDownstream": [],
+              "toUpstream": []
+            }
+          },
+          {
+            "name": "timetable",
+            "instructionsSha256": "891270db113fd4101297a783b531de5f0e517ee3fc32e0e4b9f0742488015826",
+            "tools": [],
+            "allowSly": {
+              "toDownstream": [],
+              "toUpstream": []
+            }
+          }
+        ],
+        "origins": [],
+        "links": {}
+      }
+    },
+    {
+      "network": "https://raw.githubusercontent.com/bananatruck/agent-passport/main/peers/tidewhistle_rooms/tidewhistle_rooms",
+      "label": "Tidewhistle Rooms",
+      "reviewedAt": "2026-11-18T08:17:40.940Z",
+      "reviewedBy": "Tidewater Trip Desk publisher",
+      "note": "Rooms and prices; bookings by phone, no payment details in chat.",
+      "digest": {
+        "manifestEntry": "d1525bedd95e5e3c56945b285d05218e33cae5b173765689eb6278e1b8ee86d5",
+        "definition": "a15371ae65688bdaa1d44c8b17a42579082e064b6e5a97a8267379b21fc369be",
+        "links": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "combined": "fa8267ed6a1689df53ec2207f714cac9968f1f050b0a6681f6420da99d929595"
+      },
+      "snapshot": {
+        "frontMan": "rooms_desk",
+        "agents": [
+          {
+            "name": "rooms_desk",
+            "instructionsSha256": "171fcb26a3f650fe987730b230d87a5b2d52ffbb57fd0bac662e3f76a11349e2",
+            "tools": [],
+            "allowSly": {
+              "toDownstream": [],
+              "toUpstream": []
+            }
+          }
+        ],
+        "origins": [],
+        "links": {}
+      }
+    }
+  ]
+}
