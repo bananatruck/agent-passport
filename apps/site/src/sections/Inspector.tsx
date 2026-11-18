@@ -7,7 +7,7 @@ import { HiddenTextPanel } from "../components/HiddenTextPanel";
 import { PassportCardHost } from "../components/PassportCardHost";
 import { BorderBeam } from "../components/ui/border-beam";
 import { HoverBorderGradient } from "../components/ui/hover-border-gradient";
-import { verdictColor } from "./shared";
+import { VERDICT_LABEL, verdictColor } from "./shared";
 
 export default function Inspector() {
   const [peers, setPeers] = useState<DemoPeer[]>([]);
@@ -132,7 +132,17 @@ export default function Inspector() {
         <h3 className="font-display text-2xl font-bold text-(--ap-text)">
           Inspection result
         </h3>
-        <div className="relative mt-3 overflow-hidden rounded-lg border border-(--ap-guilloche) bg-(--ap-paper) p-4 sm:p-6">
+        <p role="status" aria-live="polite" className="sr-only">
+          {inspectorLoading
+            ? "Checking the partner."
+            : inspectorReport
+              ? `${inspectorReport.network?.declared.brand ?? inspectorReport.networkName ?? "Partner"}: ${VERDICT_LABEL[inspectorReport.verdict]}. ${inspectorReport.summary}`
+              : ""}
+        </p>
+        <div
+          aria-busy={inspectorLoading}
+          className="relative mt-3 overflow-hidden rounded-lg border border-(--ap-guilloche) bg-(--ap-paper) p-4 sm:p-6"
+        >
           {inspectorReport && (
             <BorderBeam
               size={72}

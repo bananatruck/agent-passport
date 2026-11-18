@@ -93,3 +93,13 @@ describe("<agent-passport-card>", () => {
     expect(b).toMatch(/^DDDDDDDDDDDDDDDD<CHANGED<20261118/);
   });
 });
+
+describe("<agent-passport-card> agent prompts", () => {
+  it("says when an agent has no instructions of its own instead of showing nothing", () => {
+    const r = report();
+    r.network!.agents = [{ name: "helper", description: "", instructions: "", instructionsSha256: "0".repeat(64), tools: [], type: "other", allowSly: { toDownstream: [], toUpstream: [] } }];
+    const text = mount(r).shadowRoot!.textContent ?? "";
+    expect(text).toContain("What each agent is told (1)");
+    expect(text).toContain("generic default prompt");
+  });
+});

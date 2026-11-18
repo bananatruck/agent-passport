@@ -281,7 +281,7 @@ export class AgentPassportCard extends HTMLElement {
         const c = el("div", "change agent");
         const kind = agent.type === "rest" ? "REST call" : agent.type === "coded" ? "code" : agent.name === report.network.runtimeFrontMan ? "front agent" : "agent";
         c.append(el("strong", undefined, `${agent.name} (${kind})`));
-        c.append(el("pre", undefined, agent.instructions || "No instructions."));
+        c.append(el("pre", undefined, agent.instructions || "No instructions of its own; the runtime gives it a generic default prompt."));
         list.append(c);
       }
       det.append(list);

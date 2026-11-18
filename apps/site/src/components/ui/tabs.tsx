@@ -4,7 +4,7 @@
  * License: Aceternity License - free for personal and commercial end products, no redistribution as a component library or template (https://ui.aceternity.com/licence, https://ui.aceternity.com/pricing)
  */
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 
 import { cn } from "../../lib/utils";
@@ -41,6 +41,22 @@ export const Tabs = ({
   };
 
   const [hovering, setHovering] = useState(false);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // WAI-ARIA tabs pattern: arrow keys, Home and End move between tabs and select them.
+  const onTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, idx: number) => {
+    const last = propTabs.length - 1;
+    const next =
+      event.key === "ArrowRight" ? (idx === last ? 0 : idx + 1)
+      : event.key === "ArrowLeft" ? (idx === 0 ? last : idx - 1)
+      : event.key === "Home" ? 0
+      : event.key === "End" ? last
+      : null;
+    if (next === null) return;
+    event.preventDefault();
+    moveSelectedTabToTop(next);
+    tabRefs.current[next]?.focus();
+  };
 
   return (
     <div className="w-full">
@@ -57,9 +73,16 @@ export const Tabs = ({
           return (
             <button
               key={tab.value}
+              ref={(node) => {
+                tabRefs.current[idx] = node;
+              }}
               type="button"
               role="tab"
+              id={`tab-${tab.value}`}
               aria-selected={isSelected}
+              aria-controls={`tabpanel-${tab.value}`}
+              tabIndex={isSelected ? 0 : -1}
+              onKeyDown={(event) => onTabKeyDown(event, idx)}
               onClick={() => {
                 moveSelectedTabToTop(idx);
               }}
@@ -127,6 +150,9 @@ export const FadeInDiv = ({
           <motion.div
             key={tab.value}
             role="tabpanel"
+            id={`tabpanel-${tab.value}`}
+            aria-labelledby={`tab-${tab.value}`}
+            tabIndex={0}
             initial={prefersReducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
