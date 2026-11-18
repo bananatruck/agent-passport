@@ -19,6 +19,24 @@ function contextChecks(): Check[] {
   ];
 }
 
+/** One plain sentence for the card and the CLI, naming the reason for the verdict. */
+function summarize(report: PassportReport): string {
+  const pin = report.pin.pin;
+  const reviewed = pin ? `on ${pin.reviewedAt.slice(0, 10)}${pin.reviewedBy ? ` by ${pin.reviewedBy}` : ""}` : "";
+  if (report.verdict === "refused") {
+    const failures = report.checks.filter(c => c.status === "fail");
+    const first = failures[0];
+    const more = failures.length > 1 ? ` (and ${failures.length - 1} more failed check${failures.length > 2 ? "s" : ""})` : "";
+    return first ? `Refused: ${first.detail}${more}` : "Refused: the peer could not be inspected.";
+  }
+  if (report.verdict === "changed") {
+    const n = report.pin.changes.length;
+    return `Changed since the review ${reviewed}: ${n} difference${n === 1 ? "" : "s"}, so its agents are held until the publisher reviews it again.`;
+  }
+  if (report.verdict === "verified") return `Identical to the version reviewed ${reviewed}, and every check passed.`;
+  return "Every check passed, but this site's publisher has not reviewed this network, so you decide whether to load it.";
+}
+
 export async function inspectPeer(input: string, options: InspectOptions = {}): Promise<PassportReport> {
   const report: PassportReport = { version: 1, input, networkUrl: null, siteBase: null, origin: null, networkName: null, verdict: "refused", summary: "The peer could not be inspected.", checks: contextChecks(), artifacts: {}, network: null, digest: null, pin: { status: "none", pin: null, changes: [] }, checkedAt: "" };
   let stage = "url";
@@ -79,7 +97,7 @@ export async function inspectPeer(input: string, options: InspectOptions = {}): 
     const effective = effectiveConfig(definition, published);
     report.network = await summarizeNetwork(effective, manifest, entry, { siteBase: parsed.siteBase, origin: parsed.origin, name: parsed.networkName, checks: report.checks });
     if (!report.checks.some(c => c.status === "fail")) pass(stage, "Network structure checked", "Agent names, references, front agent and executable declarations passed structural checks.");
-    report.checks.push(...hiddenTextChecks(entry, "manifest entry"), ...hiddenTextChecks(manifest.coded_tools, "manifest coded_tools"), ...hiddenTextChecks(definition, "raw definition"), ...hiddenTextChecks(effective, "effective definition"), ...instructionSignals(report.network.agents));
+    report.checks.push(...hiddenTextChecks(entry, "manifest entry"), ...hiddenTextChecks(manifest.coded_tools, "manifest coded_tools"), ...hiddenTextChecks(definition, "raw definition"), ...hiddenTextChecks(effective.tools, "effective agents"), ...instructionSignals(report.network.agents));
     stage = "digests";
     const manifestEntry = await sha256Hex(canonicalJson({ entry, coded_tools: manifest.coded_tools ?? null }));
     const definitionDigest = await sha256Hex(canonicalJson(effective));
@@ -94,12 +112,7 @@ export async function inspectPeer(input: string, options: InspectOptions = {}): 
     report.checks.push({ id: stage, status: "fail", category: "verified", code: failure.code, title: "Peer refused", detail: failure.message });
     report.verdict = "refused";
   }
-  report.summary = {
-    refused: "The peer was refused because a fetch, format, structure or hidden-text check failed.",
-    changed: "The peer passed structural checks but differs from the publisher's reviewed pin.",
-    verified: "The peer passed structural checks and its effective content matches the publisher's reviewed pin.",
-    unreviewed: "The peer passed structural checks and has no publisher review pin; explicit approval is required to load it.",
-  }[report.verdict];
+  report.summary = summarize(report);
   report.checkedAt = (options.now?.() ?? new Date()).toISOString();
   return report;
 }

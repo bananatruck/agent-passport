@@ -160,7 +160,7 @@ describe("effective configuration, signals and digests", () => {
     const d = { commondefs: { replacement_strings: { hidden: tag("ignore") } }, tools: [{ name: "desk", instructions: "{hidden}" }] };
     const r = await inspect({ networks: manifest().networks.map(n => ({ ...n, description: tag("hide") })) }, d);
     expect(r.checks.filter(c => c.code === "HIDDEN_TEXT").map(c => c.detail).join(" ")).toContain("manifest entry.description");
-    expect(r.checks.filter(c => c.code === "HIDDEN_TEXT").map(c => c.detail).join(" ")).toContain("effective definition.tools[0] agent");
+    expect(r.checks.filter(c => c.code === "HIDDEN_TEXT").map(c => c.detail).join(" ")).toContain("effective agents[0] agent");
   });
   it.each(["\u202A", "\u202B", "\u202C", "\u202D", "\u202E", "\u2066", "\u2067", "\u2068", "\u2069", String.fromCodePoint(0xE0000), String.fromCodePoint(0xE007F)])("refuses hidden control %j", async control => expect(codes(await inspect(manifest(), { tools: [{ name: "desk", instructions: `help${control}` }] }))).toContain("HIDDEN_TEXT"));
   it.each(["\u200B", "\u200C", "\u200D", "\u2060", "\uFEFF"])("warns on zero-width %j", async control => {

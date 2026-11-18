@@ -36,9 +36,15 @@ export function instructionSignals(agents: AgentSummary[]): Check[] {
     ["ignore", "Earlier instructions overridden", /\bignore\s+(?:(?:all|any|previous|prior|earlier)\s+)+instructions\b/i],
     ["conceal", "Concealed action requested", /\b(?:without telling|do not tell|don't tell|secretly)\b/i],
   ];
+  // A sentence that forbids asking for secrets ("Never ask for passwords") is not a request for them.
+  const negated = /\b(?:never|not|don't|do not|no|without)\b/i;
   for (const agent of agents) {
+    const sentences = agent.instructions.split(/(?<=[.!?])\s+|\n+/).map(s => s.replace(/^[\s\-*]+/, "").trim()).filter(Boolean);
     for (const [id, title, pattern] of patterns) {
-      if (pattern.test(agent.instructions)) checks.push({ id: `signal.${id}.${agent.name}`, status: "warn", category: "signal", title, detail: `Effective instructions for ${JSON.stringify(agent.name)} match this signal, not proof of harmful behaviour.` });
+      const hit = sentences.find(s => pattern.test(s) && !(id === "secrets" && negated.test(s)));
+      if (!hit) continue;
+      const quote = hit.length > 160 ? `${hit.slice(0, 157)}...` : hit;
+      checks.push({ id: `signal.${id}.${agent.name}`, status: "warn", category: "signal", title, detail: `${JSON.stringify(agent.name)} says: "${quote}" This is a signal, not proof of harmful behaviour.` });
     }
     if (agent.instructions.length > 20000) checks.push({ id: `signal.length.${agent.name}`, status: "warn", category: "signal", title: "Unusually long instructions", detail: `${agent.name} has ${agent.instructions.length} instruction characters. This is a signal, not proof of harmful behaviour.` });
   }

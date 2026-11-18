@@ -8,6 +8,17 @@ const usage = {
   check: "check --file <path> [--json]\nInspect every pinned peer. Exit 0 only when every peer is verified.\nExamples:\n  agent-passport check --file passports.json\n  agent-passport check --file passports.json --json",
 };
 
+/** Human-readable lines for one report: verdict, summary, failed and flagged checks, changes. */
+function describe(report, fallback) {
+  const lines = [`${report.verdict} ${report.networkUrl ?? fallback}: ${report.summary}`];
+  for (const c of report.checks) {
+    if (c.status === "fail") lines.push(`  x ${c.title}: ${c.detail}`);
+    else if (c.status === "warn") lines.push(`  ! ${c.title}: ${c.detail}`);
+  }
+  for (const change of report.pin.changes) lines.push(`  ~ ${change.kind}: ${change.detail}`);
+  return lines.join("\n") + "\n";
+}
+
 /**
  * Exercise command behaviour with the real core and local files.
  * @param {string[]} argv
@@ -41,7 +52,7 @@ export async function runCli(argv, { api, stdout = text => process.stdout.write(
     const core = api ?? await import("../dist/index.js");
     if (command === "inspect") {
       const report = await core.inspectPeer(positional[0]);
-      stdout(flags.has("--json") ? JSON.stringify(report, null, 2) + "\n" : `${report.verdict} ${report.networkUrl ?? positional[0]}: ${report.summary}\n`);
+      stdout(flags.has("--json") ? JSON.stringify(report, null, 2) + "\n" : describe(report, positional[0]));
       return report.verdict === "refused" || report.verdict === "changed" ? 1 : 0;
     }
     let pins;
@@ -63,7 +74,7 @@ export async function runCli(argv, { api, stdout = text => process.stdout.write(
     }
     const reports = [];
     for (const pin of pins.pins) reports.push(await core.inspectPeer(pin.network, { pins }));
-    stdout(flags.has("--json") ? JSON.stringify(reports, null, 2) + "\n" : reports.map(r => `${r.verdict} ${r.networkUrl ?? r.input}${r.pin.changes.length ? ": " + r.pin.changes.map(c => c.kind).join(", ") : ""}\n`).join(""));
+    stdout(flags.has("--json") ? JSON.stringify(reports, null, 2) + "\n" : reports.map(r => describe(r, r.input)).join(""));
     return reports.every(r => r.verdict === "verified") ? 0 : 1;
   } catch (error) {
     stderr(`${error instanceof Error ? error.message : String(error)}\nUsage: agent-passport ${usage[command]}\n`);
