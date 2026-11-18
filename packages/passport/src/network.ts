@@ -1,0 +1,170 @@
+import { sha256Hex } from "./canonical.js";
+import { PassportError } from "./errors.js";
+import { isObject, ownJsonValue } from "./json.js";
+import type { JsonObject, JsonValue } from "./json.js";
+import type { AgentSummary, Check, NetworkSummary, ToolRef } from "./types.js";
+import { requireHttpUrl, resolveUrl } from "./url.js";
+
+const DEFAULT_KEYS = ["llm_config", "verbose", "max_steps", "max_iterations", "max_execution_seconds", "max_attempts", "error_formatter", "error_fragments"];
+const object = (v: JsonValue | undefined): JsonObject => isObject(v) ? v : Object.create(null);
+export const stringList = (v: unknown): string[] => Array.isArray(v) && v.every(x => typeof x === "string") ? v : [];
+
+/** JavaScript object spread and own-property lookup also accept arrays and strings. */
+function spread(value: JsonValue | undefined): JsonObject {
+  if (Array.isArray(value)) return Object.fromEntries(value.map((v, i) => [String(i), v]));
+  if (typeof value === "string") return Object.fromEntries(value.split("").map((v, i) => [String(i), v]));
+  return object(value);
+}
+
+function merge(a: JsonObject, b: JsonObject): JsonObject {
+  const out: JsonObject = Object.assign(Object.create(null), a);
+  for (const [key, value] of Object.entries(b)) {
+    const previous = out[key];
+    out[key] = isObject(previous) && isObject(value) ? merge(previous, value) : value;
+  }
+  return out;
+}
+
+export function effectiveConfig(raw: JsonObject, published: JsonValue = {}): JsonObject {
+  const config = structuredClone(raw);
+  config.links = { ...spread(config.links), ...spread(published) };
+  const common = object(config.commondefs);
+  const strings = common.replacement_strings;
+  const values = common.replacement_values;
+  const walk = (v: JsonValue): JsonValue => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (isObject(v)) {
+      const out: JsonObject = Object.create(null);
+      for (const [k, val] of Object.entries(v)) out[k] = walk(val);
+      return out;
+    }
+    if (typeof v !== "string") return v;
+    const replacement = ownJsonValue(values, v);
+    if (replacement !== undefined) return replacement;
+    return v.replace(/\{([A-Za-z0-9_]+)\}/g, (match: string, key: string) => {
+      const replacement = ownJsonValue(strings, key);
+      return replacement === undefined ? match : String(replacement);
+    });
+  };
+  const effective = walk(config);
+  if (!isObject(effective)) throw new PassportError("DEFINITION_SHAPE", "Definition must be an object.");
+  const normalize = (llm: JsonValue | undefined) => {
+    if (isObject(llm) && typeof llm.model_name === "string") {
+      let model = llm.model_name.trim();
+      while (model.length >= 2 && ((model.startsWith('"') && model.endsWith('"')) || (model.startsWith("'") && model.endsWith("'")))) model = model.slice(1, -1).trim();
+      llm.model_name = model;
+    }
+  };
+  for (const agent of Array.isArray(effective.tools) ? effective.tools : []) {
+    if (!isObject(agent)) continue;
+    for (const key of DEFAULT_KEYS) {
+      if (Object.hasOwn(effective, key)) {
+        const def = effective[key];
+        const local = agent[key];
+        if (isObject(def) && isObject(local)) agent[key] = merge(def, local);
+        else if (!Object.hasOwn(agent, key) && def !== undefined) agent[key] = structuredClone(def);
+      }
+    }
+    if (typeof agent.name === "string") agent.name = agent.name.trim();
+    normalize(agent.llm_config);
+  }
+  normalize(effective.llm_config);
+  return effective;
+}
+
+export function runtimeFrontMan(agents: JsonObject[]): string | null {
+  const front = agents.find(a => a.instructions && !a.class && !a.toolbox) ?? agents[0];
+  return typeof front?.name === "string" ? front.name : null;
+}
+
+export function isMcpRef(ref: string): boolean {
+  if (!ref.startsWith("http://") && !ref.startsWith("https://")) return false;
+  const lower = ref.toLowerCase();
+  return lower.includes("/mcp/") || lower.endsWith("/mcp") || lower.includes("//mcp.") || lower.includes(".mcp.");
+}
+
+function contactOrigin(url: string, peerOrigin: string): string {
+  // The runtime treats every slash-prefixed ref as origin + ref, even '//...'.
+  const target = url.startsWith("/") ? peerOrigin + url : url;
+  const parsed = new URL(target);
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new PassportError("DEFINITION_SHAPE", `Unsupported tool URL ${url}.`);
+  if (parsed.username || parsed.password) throw new PassportError("CREDENTIALS_IN_URL", "Tool URLs must not contain credentials.");
+  return parsed.origin;
+}
+
+export function classifyTool(ref: JsonValue, config: JsonObject, peerOrigin: string): ToolRef {
+  const agents = Array.isArray(config.tools) ? config.tools.filter(isObject) : [];
+  if (typeof ref !== "string") {
+    if (!isObject(ref) || typeof ref.url !== "string" || !/^https?:\/\//.test(ref.url) || (ref.tools !== undefined && (!Array.isArray(ref.tools) || !ref.tools.every(t => typeof t === "string")))) {
+      throw new PassportError("DEFINITION_SHAPE", "An MCP descriptor needs an HTTP(S) url and an optional string tools array.");
+    }
+    return { ref: ref.url, kind: "mcp", origin: contactOrigin(ref.url, peerOrigin), ...(ref.tools === undefined ? {} : { mcpTools: stringList(ref.tools) }) };
+  }
+  if (isMcpRef(ref)) return { ref, kind: "mcp", origin: contactOrigin(ref, peerOrigin) };
+  if ((ref.startsWith("http://") || ref.startsWith("https://") || ref.startsWith("/")) && !agents.some(a => a.name === ref)) return { ref, kind: "remote", origin: contactOrigin(ref, peerOrigin) };
+  if (agents.some(a => a.name === ref)) return { ref, kind: "agent" };
+  if (Object.hasOwn(spread(config.link_slots), ref)) {
+    const target = object(config.links)[ref];
+    return { ref, kind: "link", ...(typeof target === "string" && target ? { origin: contactOrigin(target, peerOrigin) } : {}) };
+  }
+  return { ref, kind: "missing" };
+}
+
+/** Validate before summarizing; retain independent failures for the card. */
+export async function summarizeNetwork(config: JsonObject, manifest: JsonObject, entry: JsonObject, context: { siteBase: string; origin: string; name: string; checks: Check[] }): Promise<NetworkSummary> {
+  const { checks } = context;
+  const fail = (code: NonNullable<Check["code"]>, id: string, detail: string) => checks.push({ id, code, status: "fail", category: "verified", title: "Network structure refused", detail });
+  if (!Array.isArray(config.tools) || !config.tools.length || !config.tools.every(isObject)) throw new PassportError("DEFINITION_SHAPE", "Definition needs a non-empty tools array of agent objects.");
+  const agents = config.tools;
+  const names = new Set<string>();
+  const origins = new Set<string>();
+  const coded = object(manifest.coded_tools);
+  if (coded.bundle !== undefined && (typeof coded.bundle !== "string" || !coded.bundle)) throw new PassportError("MANIFEST_SHAPE", "coded_tools.bundle must be a non-empty string.");
+  if (coded.integrity !== undefined && typeof coded.integrity !== "string") throw new PassportError("MANIFEST_SHAPE", "coded_tools.integrity must be a string.");
+  let codedTools: NetworkSummary["codedTools"] = null;
+  if (typeof coded.bundle === "string" && coded.bundle) {
+    const url = requireHttpUrl(resolveUrl(context.siteBase, coded.bundle));
+    origins.add(url.origin);
+    codedTools = { bundle: url.href, integrity: typeof coded.integrity === "string" && coded.integrity ? coded.integrity : null };
+    if (!codedTools.integrity) checks.push({ id: "definition.code-integrity", status: "warn", category: "verified", title: "Code bundle has no integrity digest", detail: `Publisher declares ${url.href} without an SRI digest; the bundle's content is not checked.` });
+  }
+  const summaries: AgentSummary[] = [];
+  for (const agent of agents) {
+    if (typeof agent.name !== "string" || !agent.name.trim()) throw new PassportError("DEFINITION_SHAPE", "Every agent needs a non-empty string name.");
+    const name = agent.name.trim();
+    if (names.has(name)) fail("DUPLICATE_AGENT", `definition.duplicate.${name}`, `Duplicate agent name after trimming: ${JSON.stringify(name)}.`);
+    names.add(name);
+    if (agent.instructions !== undefined && typeof agent.instructions !== "string") throw new PassportError("DEFINITION_SHAPE", `Instructions for ${name} must be a string.`);
+    if (agent.description !== undefined && typeof agent.description !== "string") throw new PassportError("DEFINITION_SHAPE", `Description for ${name} must be a string.`);
+    if (agent.tools !== undefined && !Array.isArray(agent.tools)) throw new PassportError("DEFINITION_SHAPE", `Tools for ${name} must be an array.`);
+    const executable = Object.hasOwn(agent, "class") || Object.hasOwn(agent, "toolbox");
+    if (executable && !codedTools) fail("UNDECLARED_CODE", `definition.code.${name}`, `Agent ${name} declares executable code without coded_tools.bundle.`);
+    const tools = (Array.isArray(agent.tools) ? agent.tools : []).map(ref => classifyTool(ref, config, context.origin));
+    for (const tool of tools) {
+      if (tool.kind === "missing") fail("MISSING_TOOL", `definition.tool.${name}.${tool.ref}`, `Agent ${name} references missing tool ${JSON.stringify(tool.ref)}.`);
+      if (tool.origin) origins.add(tool.origin);
+    }
+    const allow = object(agent.allow);
+    const down = object(allow.to_downstream).sly_data;
+    const up = object(allow.to_upstream).sly_data;
+    for (const rules of [down, up]) if (rules !== undefined && rules !== null && (!Array.isArray(rules) || !rules.every(r => typeof r === "string"))) throw new PassportError("DEFINITION_SHAPE", `Private-context rules for ${name} must be string arrays.`);
+    const instructions = typeof agent.instructions === "string" ? agent.instructions : "";
+    summaries.push({ name, description: typeof agent.description === "string" ? agent.description : "", instructions, instructionsSha256: await sha256Hex(instructions), tools, type: executable ? "coded" : instructions ? "llm" : "other", allowSly: { toDownstream: stringList(down), toUpstream: stringList(up) } });
+  }
+  const front = runtimeFrontMan(agents);
+  if (front !== entry.front_man) fail("FRONT_MAN_MISMATCH", "definition.front-man", `Manifest front_man ${JSON.stringify(entry.front_man)} differs from runtime front agent ${JSON.stringify(front)}.`);
+  const links: Record<string, string> = Object.create(null);
+  if (config.links !== undefined && !isObject(config.links)) throw new PassportError("DEFINITION_SHAPE", "Network links must be an object.");
+  for (const [slot, target] of Object.entries(object(config.links))) {
+    if (typeof target !== "string") throw new PassportError("DEFINITION_SHAPE", `Link ${slot} must be a string URL.`);
+    links[slot] = target;
+    if (target) {
+      origins.add(contactOrigin(target, context.origin));
+    }
+  }
+  return {
+    name: context.name, frontMan: typeof entry.front_man === "string" ? entry.front_man : "", runtimeFrontMan: front,
+    agents: summaries, origins: [...origins].sort(), links, codedTools,
+    declared: { brand: typeof manifest.brand === "string" ? manifest.brand : null, description: typeof entry.description === "string" ? entry.description : typeof manifest.description === "string" ? manifest.description : null, llmRouter: manifest.llm_router ?? null, peerPolicy: manifest.peer_policy ?? null, allowedPeers: stringList(manifest.allowed_peers), sampleQueries: stringList(entry.sample_queries ?? manifest.sample_queries) },
+  };
+}
