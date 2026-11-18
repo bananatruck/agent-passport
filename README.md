@@ -4,7 +4,7 @@ Check a partner site's AI agents before they run in your visitor's browser, and 
 
 Live demo: https://bananatruck.github.io/agent-passport/
 
-![Agent Passport: a verified partner passport on the Tidewater Trip Desk demo](docs/screenshots/desktop-hero.png)
+![Agent Passport: a verified partner passport on the Tidewater Trip Desk demo](docs/screenshots/live-desktop-hero.png)
 
 Agent Passport is an entry for the [Open Agentic Web Challenge](https://cognizant-agenticweb.devpost.com/).
 It is a small, dependency-free TypeScript library, a web component and a CLI for sites that follow the [Minimum Viable Specification for a Worldwide Agentic Web](https://github.com/cognizant-ai-labs/agentic-web/blob/main/docs/worldwide_agentic_web_mvp_spec.md) (MVP Profile 0.2).
@@ -36,9 +36,9 @@ The same check can run in CI (this repository ships an on-demand partner drift w
 
 | The live demo | The Inspector | On a phone |
 | --- | --- | --- |
-| ![Three partner passports after one request: Verified, Changed, Refused](docs/screenshots/desktop-demo.png) | ![The Inspector refusing Gull Deals and decoding its hidden text](docs/screenshots/desktop-inspector.png) | ![The demo at 390 pixels wide](docs/screenshots/phone-demo.png) |
+| ![Three partner passports after one request: Verified, Changed, Refused](docs/screenshots/live-desktop-demo.png) | ![The Inspector refusing Gull Deals and decoding its hidden text](docs/screenshots/live-desktop-inspector.png) | ![The demo at 390 pixels wide](docs/screenshots/live-phone-demo.png) |
 
-All screenshots come from `node scripts/e2e.mjs --screenshots`, which drives the real demo in Chromium.
+All screenshots come from `SITE_URL=https://bananatruck.github.io/agent-passport/ node scripts/e2e.mjs --screenshots`, which drives the live demo in Chromium.
 
 ## What is checked, and what is not
 
