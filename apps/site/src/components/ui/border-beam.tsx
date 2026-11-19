@@ -44,8 +44,8 @@ export const BorderBeam = ({
   }
 
   return (
-    // The mask classes are verbatim from upstream (https://magicui.design/r/border-beam.json). A review
-    // read them as hiding the beam; a pixel comparison on the live site (round 3) shows it renders.
+    // These mask classes come from https://magicui.design/r/border-beam.json.
+    // Their visual effect still needs a browser check; upstream provenance does not prove visibility.
     <div
       aria-hidden="true"
       className="pointer-events-none absolute inset-0 rounded-[inherit] border-(length:--border-beam-width) border-transparent mask-[linear-gradient(transparent,transparent),linear-gradient(#000,#000)] mask-intersect [mask-clip:padding-box,border-box]"
