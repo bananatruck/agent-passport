@@ -347,6 +347,54 @@ describe("installPassportGuard", () => {
     expect(redirects).toEqual(["error"]);
   });
 
+  it("refuses a published link before the runtime can grant it a policy exception", async () => {
+    const files = peerFiles("Answer ferry times.");
+    serveJson(PEER, {
+      ...files,
+      "/agent-manifest.json": { ...files["/agent-manifest.json"], peer_policy: { mode: "closed" }, allowed_peers: [] },
+      "/harbor_ferry.network.json": {
+        tools: [{ ...files["/harbor_ferry.network.json"].tools[0], tools: ["rooms"] }],
+        link_slots: { rooms: {} },
+      },
+      "/links.json": { networks: { harbor_ferry: { rooms: `${OTHER}/rooms` } } },
+    });
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null, parseHocon, approveUnreviewed: async () => true });
+    await expect(engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest)).rejects.toThrow(/published link/);
+    expect(engine.runtimeAllowedPeers.has(OTHER)).toBe(false);
+    expect(engine.registry.get(PEER, "harbor_ferry")).toBeUndefined();
+  });
+
+  it("keeps a published link that the partner's policy allows", async () => {
+    const files = peerFiles("Answer ferry times.");
+    serveJson(PEER, {
+      ...files,
+      "/agent-manifest.json": { ...files["/agent-manifest.json"], allowed_peers: [OTHER] },
+      "/links.json": { networks: { harbor_ferry: { rooms: `${OTHER}/rooms` } } },
+    });
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null, parseHocon, approveUnreviewed: async () => true });
+    const session = await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    expect(session.network.getLink("rooms")).toBe(`${OTHER}/rooms`);
+  });
+
+  it("stops MCP redirects even for an endpoint that is not a REST target", async () => {
+    const files = peerFiles("Answer ferry times.");
+    const endpoint = `${OTHER}/mcp`;
+    serveJson(PEER, { ...files, "/harbor_ferry.network.json": { tools: [{ ...files["/harbor_ferry.network.json"].tools[0], tools: [endpoint] }] } });
+    const seen: (RequestRedirect | undefined)[] = [];
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) === endpoint) seen.push(init?.redirect);
+      return inner(input, init);
+    };
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null, parseHocon, approveUnreviewed: async () => true });
+    await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    await (await fetch(endpoint, { method: "POST", body: "{}", redirect: "follow" })).text();
+    expect(seen).toEqual(["error"]);
+  });
+
   it("keeps HOCON-only syntax away from the runtime's parser (runtime finding hocon.js:182)", async () => {
     serveJson(PEER, peerFiles("Answer ferry times."));
     routes.set(`${PEER}/harbor_ferry.network.json`, () => ({ status: 200, body: "{ tools: [ { name: ferry_desk, instructions: hi } ] }" }));

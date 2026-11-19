@@ -146,7 +146,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     const signals = [deadline.signal, init?.signal, input instanceof Request ? input.signal : undefined].filter((s): s is AbortSignal => !!s);
     let response: Response;
     try {
-      response = await realFetch(input as RequestInfo, { ...init, signal: AbortSignal.any(signals) });
+      response = await realFetch(input as RequestInfo, { ...init, redirect: "error", signal: AbortSignal.any(signals) });
     } catch (error) {
       clearTimeout(timer);
       throw error;
@@ -260,6 +260,14 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
 
     const { manifest, definition, links } = report.artifacts;
     if (!manifest || !definition) block("the verified files are missing from the report.");
+    // resolveLink grants published targets a runtime policy exception. Check the checked
+    // bindings before they can reach that path and expand the partner's allowed peers.
+    const partnerManifest: unknown = JSON.parse(manifest!.text);
+    for (const target of Object.values(report.network?.links ?? {})) {
+      if (!target) continue;
+      try { engine._assertAllowedPeer(target, partnerManifest); }
+      catch { block("a published link targets a destination outside its allowed_peers policy."); }
+    }
     if (options.parseHocon) {
       const parse = options.parseHocon;
       const same = (() => {
