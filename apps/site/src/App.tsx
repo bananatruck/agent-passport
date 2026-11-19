@@ -161,6 +161,7 @@ export function App() {
               ["Source code", "https://github.com/bananatruck/agent-passport"],
               ["Build spec and threat model", "https://github.com/bananatruck/agent-passport/blob/main/docs/SPEC.md"],
               ["UI component credits", "https://github.com/bananatruck/agent-passport/blob/main/docs/CREDITS.md"],
+              ["Third-party notices", "./third-party-notices.txt"],
               ["The Open Agentic Web spec", "https://github.com/cognizant-ai-labs/agentic-web/blob/main/docs/worldwide_agentic_web_mvp_spec.md"],
             ].map(([label, href]) => (
               <a

@@ -67,7 +67,7 @@ In the runtime guard, the runtime compiles exactly the bytes Agent Passport veri
 
 ### 4.3 Enforced by the runtime, not by Agent Passport
 
-The vendored reference runtime runs a peer on the caller's router and model, never sends the visitor's key to the peer, applies the caller's step limit, filters private context (`sly_data`) through the caller's allow rules, and checks `allowed_peers` per hop.
+The vendored reference runtime runs a peer on the caller's router and model, never sends the visitor's key to the peer, applies the caller's step limit on its built-in runner (its optional LangChain runner does not, and static sites such as this demo never use that runner), filters private context (`sly_data`) through the caller's allow rules, and checks `allowed_peers` per hop.
 The card reports these as runtime guarantees and names the runtime version, and it never presents them as something Agent Passport checked.
 
 ### 4.4 Declared by the publisher, not verified

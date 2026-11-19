@@ -2,6 +2,7 @@
  * Source: https://raw.githubusercontent.com/serafimcloud/21st/main/apps/web/components/ui/hero-pill.tsx (https://github.com/serafimcloud/21st/blob/main/apps/web/components/ui/hero-pill.tsx)
  * Library: 21st.dev
  * License: MIT License (https://github.com/serafimcloud/21st/blob/main/LICENSE)
+ * Copyright (c) 2024 21st.dev. The full license text, including its permission notice, ships with the site in public/third-party-notices.txt.
  */
 
 import React from "react";

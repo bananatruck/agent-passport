@@ -1,5 +1,5 @@
 // The Inspector: check any partner URL in the browser. Loaded lazily, after the hero.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import type { PassportReport } from "agent-passport";
 import { inspect, loadPeers, type DemoPeer } from "../passport-bridge";
@@ -16,6 +16,8 @@ export default function Inspector() {
   const [inspectorLoading, setInspectorLoading] = useState<boolean>(false);
   const [inspectorReport, setInspectorReport] = useState<PassportReport | null>(null);
   const [inspectorError, setInspectorError] = useState<string | null>(null);
+  // Only the latest inspection may update the result; an older one that finishes later is ignored.
+  const latestRequest = useRef(0);
 
   useEffect(() => {
     loadPeers()
@@ -34,17 +36,18 @@ export default function Inspector() {
       setInspectorError("Enter a peer network URL to run an inspection.");
       return;
     }
+    const request = ++latestRequest.current;
     setInspectorLoading(true);
     setInspectorError(null);
     setInspectorReport(null);
     try {
       const report = await inspect(trimmed);
-      setInspectorReport(report);
+      if (request === latestRequest.current) setInspectorReport(report);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setInspectorError(message);
+      if (request === latestRequest.current) setInspectorError(message);
     } finally {
-      setInspectorLoading(false);
+      if (request === latestRequest.current) setInspectorLoading(false);
     }
   };
 

@@ -2,6 +2,7 @@
  * Source: https://reactbits.dev/r/DecryptedText-TS-TW.json (https://reactbits.dev/text-animations/decrypted-text)
  * Library: React Bits
  * License: MIT + Commons Clause License Condition v1.0 (https://github.com/DavidHDev/react-bits/blob/main/LICENSE.md)
+ * Copyright (c) 2026 David Haz. The full license text, including its permission notice, ships with the site in public/third-party-notices.txt.
  */
 
 import {
@@ -696,7 +697,7 @@ export default function DecryptedText({
           typeof group === "string" ? (
             group
           ) : (
-            <span key={group.key} className="whitespace-nowrap">
+            <span key={group.key} className="[overflow-wrap:anywhere]">
               {group.letters.map((index) => {
                 const char = chars[index];
                 const revealed = frame.revealed[index] ?? true;

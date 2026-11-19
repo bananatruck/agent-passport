@@ -174,7 +174,7 @@ export default function LiveDemo() {
                 />
                 {entry.outcome && (
                   <p className="px-1 text-xs font-semibold text-(--ap-text)/80">
-                    {entry.outcome === "loaded" ? "Loaded: its agents ran in this browser." : "Not loaded: its agents did not run."}
+                    {entry.outcome === "loaded" ? "Loaded: its agents are available to run in this browser." : "Not loaded: its agents did not run."}
                   </p>
                 )}
               </div>

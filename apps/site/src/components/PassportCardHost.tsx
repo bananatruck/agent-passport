@@ -24,12 +24,14 @@ export interface PassportCardHostProps {
 export function PassportCardHost({ report, decide = false, onDecision, className }: PassportCardHostProps) {
   const ref = useRef<AgentPassportCard | null>(null);
 
+  // Separate effects: a new report resets the card's recorded decision, but showing or hiding
+  // the decision buttons must not.
   useEffect(() => {
-    const card = ref.current;
-    if (!card) return;
-    card.decide = decide;
-    card.report = report;
-  }, [report, decide]);
+    if (ref.current) ref.current.report = report;
+  }, [report]);
+  useEffect(() => {
+    if (ref.current) ref.current.decide = decide;
+  }, [decide]);
 
   useEffect(() => {
     const card = ref.current;

@@ -13,7 +13,7 @@ export function NetworkTopology() {
     <div className="rounded-lg border border-(--ap-guilloche) bg-(--ap-paper) p-4">
       <div
         ref={containerRef}
-        className="relative flex w-full items-center justify-between gap-4 py-3"
+        className="relative flex w-full flex-wrap items-center justify-between gap-4 py-3"
       >
         <div className="z-10 flex flex-col items-start">
           <div

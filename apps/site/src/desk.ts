@@ -82,6 +82,10 @@ function partnerSummaries() {
 function openPassport(partner: string | null) {
   const known = peers?.partners.map((p) => p.id) ?? [];
   if (partner && !known.includes(partner)) return { ok: false, reason: `Unknown partner ${partner}.` };
+  const selector = partner ? `#passport-${CSS.escape(partner)}` : "[data-demo-passports] [id^='passport-']";
+  if (!document.querySelector(selector)) {
+    return { ok: false, reason: partner ? `No passport for ${partner} yet: that partner has not been contacted in this visit.` : "No passport yet: no partner has been contacted in this visit." };
+  }
   window.dispatchEvent(new CustomEvent("passport:open", { detail: { networkName: partner } }));
   return { ok: true, shown: partner ?? "the most recent passport" };
 }

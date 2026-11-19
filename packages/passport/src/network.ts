@@ -25,7 +25,16 @@ function merge(a: JsonObject, b: JsonObject): JsonObject {
   return out;
 }
 
-export function effectiveConfig(raw: JsonObject, published: JsonValue = {}): JsonObject {
+/** Default budget, in characters, for the definition after substitutions: 16 times the download limit. */
+export const EXPANSION_BUDGET = 16 * 1048576;
+
+export function effectiveConfig(raw: JsonObject, published: JsonValue = {}, budget = EXPANSION_BUDGET): JsonObject {
+  // A small definition can reuse a long replacement many times; stop before materialising it.
+  let produced = 0;
+  const spend = (chars: number) => {
+    produced += chars;
+    if (produced > budget) throw new PassportError("TOO_LARGE", `The definition expands to more than ${budget} characters after the runtime's substitutions.`);
+  };
   const config = structuredClone(raw);
   config.links = { ...spread(config.links), ...spread(published) };
   const common = object(config.commondefs);
@@ -40,11 +49,19 @@ export function effectiveConfig(raw: JsonObject, published: JsonValue = {}): Jso
     }
     if (typeof v !== "string") return v;
     const replacement = ownJsonValue(values, v);
-    if (replacement !== undefined) return replacement;
-    return v.replace(/\{([A-Za-z0-9_]+)\}/g, (match: string, key: string) => {
+    if (replacement !== undefined) {
+      spend(JSON.stringify(replacement)?.length ?? 4);
+      return replacement;
+    }
+    const out = v.replace(/\{([A-Za-z0-9_]+)\}/g, (match: string, key: string) => {
       const replacement = ownJsonValue(strings, key);
-      return replacement === undefined ? match : String(replacement);
+      if (replacement === undefined) return match;
+      const text = String(replacement);
+      spend(text.length);
+      return text;
     });
+    spend(v.length);
+    return out;
   };
   const effective = walk(config);
   if (!isObject(effective)) throw new PassportError("DEFINITION_SHAPE", "Definition must be an object.");
@@ -61,6 +78,7 @@ export function effectiveConfig(raw: JsonObject, published: JsonValue = {}): Jso
       if (Object.hasOwn(effective, key)) {
         const def = effective[key];
         const local = agent[key];
+        spend(JSON.stringify(def)?.length ?? 4);
         if (isObject(def) && isObject(local)) agent[key] = merge(def, local);
         else if (!Object.hasOwn(agent, key) && def !== undefined) agent[key] = structuredClone(def);
       }
@@ -83,6 +101,18 @@ export function isMcpRef(ref: string): boolean {
   return lower.includes("/mcp/") || lower.endsWith("/mcp") || lower.includes("//mcp.") || lower.includes(".mcp.");
 }
 
+/**
+ * Where the runtime will really send a remote reference. resolveRemote resolves it against the
+ * calling site's base, not the partner's: "/x" names one of the calling site's own networks, and
+ * "//host/x" names another host on the calling site's scheme (taken here as https).
+ */
+export const CALLING_SITE = "calling site";
+function remoteOrigin(ref: string): string {
+  if (ref.startsWith("//")) return contactOrigin(`https:${ref}`, "");
+  if (ref.startsWith("/")) return CALLING_SITE;
+  return contactOrigin(ref, "");
+}
+
 function contactOrigin(url: string, peerOrigin: string): string {
   // The runtime treats every slash-prefixed ref as origin + ref, even '//...'.
   const target = url.startsWith("/") ? peerOrigin + url : url;
@@ -101,7 +131,7 @@ export function classifyTool(ref: JsonValue, config: JsonObject, peerOrigin: str
     return { ref: ref.url, kind: "mcp", origin: contactOrigin(ref.url, peerOrigin), ...(ref.tools === undefined ? {} : { mcpTools: stringList(ref.tools) }) };
   }
   if (isMcpRef(ref)) return { ref, kind: "mcp", origin: contactOrigin(ref, peerOrigin) };
-  if ((ref.startsWith("http://") || ref.startsWith("https://") || ref.startsWith("/")) && !agents.some(a => a.name === ref)) return { ref, kind: "remote", origin: contactOrigin(ref, peerOrigin) };
+  if ((ref.startsWith("http://") || ref.startsWith("https://") || ref.startsWith("/")) && !agents.some(a => a.name === ref)) return { ref, kind: "remote", origin: remoteOrigin(ref) };
   if (agents.some(a => a.name === ref)) return { ref, kind: "agent" };
   if (Object.hasOwn(spread(config.link_slots), ref)) {
     const target = object(config.links)[ref];
@@ -161,14 +191,16 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
         try { return typeof args.url === "string" ? requireHttpUrl(args.url) : null; } catch { return null; }
       })();
       if (args.method !== undefined && typeof args.method !== "string") throw new PassportError("DEFINITION_SHAPE", `REST toolbox agent ${name} has a non-string method; the runtime would fail when calling it.`);
-      const method = typeof args.method === "string" ? args.method.toUpperCase() : "GET";
+      // runner.js: (args.method || "GET").toUpperCase(); browsers refuse to send CONNECT, TRACE and TRACK.
+      const method = (typeof args.method === "string" && args.method ? args.method : "GET").toUpperCase();
+      if (["CONNECT", "TRACE", "TRACK"].includes(method)) throw new PassportError("DEFINITION_SHAPE", `REST toolbox agent ${name} uses ${method}, which a browser refuses to send; the runtime would fail on every call.`);
       if (!target) fail("DEFINITION_SHAPE", `definition.rest.${name}`, `REST toolbox agent ${name} has no valid http(s) args.url.`);
       else {
         origins.add(target.origin);
         if (target.origin !== context.origin) {
           fail("UNCONSENTED_CONTACT", `definition.rest.${name}`, `REST toolbox agent ${name} would make your browser send ${method} ${target.href} without asking you: the runtime does not ask before toolbox calls, and that origin is not the partner's own. It would attach sly_data.backend_token if your site passed one.`);
         } else {
-          checks.push({ id: `definition.rest.${name}`, status: "warn", category: "verified", title: "REST call to the partner's own site", detail: `Agent ${name} sends ${method} ${target.href} without a separate prompt, attaching sly_data.backend_token if your site passed one.` });
+          checks.push({ id: `definition.rest.${name}`, status: "warn", category: "verified", title: "REST call to the partner's own site", detail: `Agent ${name} sends ${method} ${target.href} without a separate prompt, attaching sly_data.backend_token if your site passed one; the runtime also follows any redirect from that address.` });
         }
       }
     }
@@ -194,8 +226,11 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
     for (const rules of [down, up]) if (rules !== undefined && rules !== null && (!Array.isArray(rules) || !rules.every(r => typeof r === "string"))) throw new PassportError("DEFINITION_SHAPE", `Private-context rules for ${name} must be string arrays.`);
     if (agent.command !== undefined && typeof agent.command !== "string") throw new PassportError("DEFINITION_SHAPE", `Command for ${name} must be a string.`);
     // Mirror runner.js: the system prompt is the trimmed instructions, then the trimmed command.
-    const instructions = [agent.instructions, agent.command].filter((s): s is string => typeof s === "string" && !!s.trim()).map(s => s.trim()).join("\n\n");
-    summaries.push({ name, description: typeof agent.description === "string" ? agent.description : "", instructions, instructionsSha256: await sha256Hex(instructions), tools, type: rest ? "rest" : coded ? "coded" : instructions ? "llm" : "other", allowSly: { toDownstream: stringList(down), toUpstream: stringList(up) } });
+    const parts: string[] = [];
+    if (typeof agent.instructions === "string" && agent.instructions) parts.push(agent.instructions.trim());
+    if (typeof agent.command === "string" && agent.command) parts.push(agent.command.trim());
+    const instructions = parts.join("\n\n");
+    summaries.push({ name, description: typeof agent.description === "string" ? agent.description : "", instructions, instructionsSha256: await sha256Hex(instructions), tools, type: rest ? "rest" : agent.class ? "coded" : instructions ? "llm" : "other", allowSly: { toDownstream: stringList(down), toUpstream: stringList(up) } });
   }
   const front = runtimeFrontMan(agents);
   if (front !== entry.front_man) fail("FRONT_MAN_MISMATCH", "definition.front-man", `Manifest front_man ${JSON.stringify(entry.front_man)} differs from runtime front agent ${JSON.stringify(front)}.`);

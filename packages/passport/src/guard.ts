@@ -122,6 +122,9 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   const served = new Map<string, ServedFile>();
   // Partner origins currently being compiled: any request to them that is not a served file is refused.
   const sealedOrigins = new Map<string, number>();
+  // Guarded compiles run one at a time: two overlapping resolutions could otherwise replace or
+  // delete each other's served files. Inspections still run in parallel.
+  let compileQueue: Promise<void> = Promise.resolve();
 
   const guardedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = requestUrl(input, pageBase());
@@ -215,18 +218,36 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
           : { status: 404, body: "", contentType: "text/plain" },
       ],
     ];
+    // Each checked file needs its own address; two at one URL would let one replace the other.
+    if (new Set(files.map(([url]) => url)).size !== files.length) {
+      block("two of its checked files share one address.");
+    }
     const peerOrigin = new URL(origin).origin;
-    for (const [url, file] of files) served.set(url, file);
-    sealedOrigins.set(peerOrigin, (sealedOrigins.get(peerOrigin) ?? 0) + 1);
+    const previous = compileQueue;
+    let releaseQueue!: () => void;
+    compileQueue = new Promise<void>((resolve) => (releaseQueue = resolve));
+    await previous;
     try {
-      const session = await originalResolveRemote.call(engine, ref, chain, parentSpan, sourceManifest);
-      options.onDecision?.(report, true, context);
-      return session;
+      // Another resolution of the same partner may have compiled it while this one waited.
+      const compiled = engine.registry.get(origin, lastSeg);
+      if (compiled) {
+        options.onDecision?.(report, true, context);
+        return compiled;
+      }
+      for (const [url, file] of files) served.set(url, file);
+      sealedOrigins.set(peerOrigin, (sealedOrigins.get(peerOrigin) ?? 0) + 1);
+      try {
+        const session = await originalResolveRemote.call(engine, ref, chain, parentSpan, sourceManifest);
+        options.onDecision?.(report, true, context);
+        return session;
+      } finally {
+        for (const [url] of files) served.delete(url);
+        const left = (sealedOrigins.get(peerOrigin) ?? 1) - 1;
+        if (left <= 0) sealedOrigins.delete(peerOrigin);
+        else sealedOrigins.set(peerOrigin, left);
+      }
     } finally {
-      for (const [url] of files) served.delete(url);
-      const left = (sealedOrigins.get(peerOrigin) ?? 1) - 1;
-      if (left <= 0) sealedOrigins.delete(peerOrigin);
-      else sealedOrigins.set(peerOrigin, left);
+      releaseQueue();
     }
   }
 

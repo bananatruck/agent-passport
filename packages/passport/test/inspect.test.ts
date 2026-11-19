@@ -50,7 +50,8 @@ describe("inspection and runtime structure", () => {
     expect(r.verdict).toBe("unreviewed");
     expect(r.network?.agents[0]?.tools.map(t => t.kind)).toEqual(["agent", "remote", "remote", "remote", "mcp", "mcp", "link"]);
     expect(r.network?.agents[0]?.tools[5]?.mcpTools).toEqual(["search"]);
-    expect(r.network?.origins).toEqual(["https://code.example", "https://descriptor.example", "https://linked.example", "https://mcp.example", "https://peer.example", "https://remote.example"]);
+    // "/own" is resolved against the calling site and "//own2" against host own2, as resolveRemote does.
+    expect(r.network?.origins).toEqual(["calling site", "https://code.example", "https://descriptor.example", "https://linked.example", "https://mcp.example", "https://own2", "https://remote.example"]);
   });
   it("uses internal URL names before external classification, but MCP classification first", async () => {
     const d = { tools: [{ name: "desk", instructions: "help", tools: ["https://a.example/net", "https://mcp.example/net"] }, { name: "https://a.example/net" }, { name: "https://mcp.example/net" }] };
@@ -94,7 +95,11 @@ describe("inspection and runtime structure", () => {
     const r = await inspectPeer(peer, { fetch: fakeFetch({ ...routes(), "https://peer.example/agents/links.json": () => new Response(body) }) });
     expect(r.verdict).toBe("refused");
   });
-  it.each([() => new Response(null, { status: 302, headers: { Location: "https://elsewhere.example/links" } }), () => new Response(null, { status: 500 })])("treats a links.json that does not answer 200 as no published links", async response => {
+  it("refuses a links.json that redirects, because the runtime would follow it", async () => {
+    const r = await inspectPeer(peer, { fetch: fakeFetch({ ...routes(), "https://peer.example/agents/links.json": () => new Response(null, { status: 302, headers: { Location: "https://elsewhere.example/links" } }) }) });
+    expect(r.verdict).toBe("refused");
+  });
+  it.each([() => new Response(null, { status: 500 })])("treats a links.json that answers an error status as no published links", async response => {
     const r = await inspectPeer(peer, { fetch: fakeFetch({ ...routes(), "https://peer.example/agents/links.json": response }) });
     expect(r.verdict).toBe("unreviewed");
     expect(r.artifacts.links).toBeUndefined();

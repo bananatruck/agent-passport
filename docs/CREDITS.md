@@ -26,6 +26,7 @@ Every license listed below was checked directly on the library's own site or rep
 
 ## License scope
 
+The full license texts of the Magic UI, React Bits and 21st.dev files, including their copyright and permission notices, ship with the site as `apps/site/public/third-party-notices.txt` (served as `third-party-notices.txt` and linked from the footer).
 The repository's MIT license covers its own code.
 It does not relicense the third-party files listed above: each stays under the license shown in its row.
 The two Aceternity UI files (`tabs.tsx`, `hover-border-gradient.tsx`) are under the Aceternity License, which allows their use in an end product such as this site but not redistributing them as components or templates; take them from ui.aceternity.com rather than from this repository.

@@ -92,7 +92,12 @@ async function sendFile(res, file, { cors, rewrite }) {
 }
 
 function safeJoin(base, urlPath) {
-  const decoded = decodeURIComponent(urlPath.split("?")[0]);
+  let decoded;
+  try {
+    decoded = decodeURIComponent(urlPath.split("?")[0]);
+  } catch {
+    return null; // a malformed escape such as "/%" gets a 400 instead of crashing every server
+  }
   const full = normalize(join(base, decoded));
   if (full !== base && !full.startsWith(base + sep)) return null;
   return full;
@@ -125,11 +130,19 @@ function hazardServer() {
     } else if (id === "endless_brochure") {
       res.writeHead(200, { ...cors, "content-type": "application/json" });
       res.write('{"networks":[{"name":"endless_brochure","description":"');
+      // Endless on purpose, but it respects backpressure: it pauses while the client is not reading.
       const chunk = "a".repeat(64 * 1024);
-      const timer = setInterval(() => {
-        if (!res.write(chunk)) return;
-      }, 5);
-      req.on("close", () => clearInterval(timer));
+      let open = true;
+      const pump = () => {
+        while (open && res.write(chunk)) {
+          /* keep writing until the socket buffer is full */
+        }
+        if (open) res.once("drain", () => setTimeout(pump, 5));
+      };
+      req.on("close", () => {
+        open = false;
+      });
+      pump();
     } else if (id === "slow_dock") {
       const timer = setTimeout(() => {
         res.writeHead(200, { ...cors, "content-type": "application/json" }).end("{}");

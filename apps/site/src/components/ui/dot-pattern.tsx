@@ -2,10 +2,11 @@
  * Source: https://magicui.design/r/dot-pattern.json (https://magicui.design/docs/components/dot-pattern)
  * Library: Magic UI
  * License: MIT License (https://github.com/magicuidesign/magicui/blob/main/LICENSE.md)
+ * Copyright (c) Magic UI. The full license text, including its permission notice, ships with the site in public/third-party-notices.txt.
  */
 
 import React, { useEffect, useId, useRef, useState } from "react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 
 import { cn } from "../../lib/utils";
 
@@ -34,6 +35,8 @@ function Dot({
   glow: boolean;
   gradientId: string;
 }) {
+  const reduceMotion = useReducedMotion();
+  const animateGlow = glow && !reduceMotion;
   const [timing] = useState(() => ({
     delay: Math.random() * 5,
     duration: Math.random() * 3 + 2,
@@ -45,9 +48,9 @@ function Dot({
       cy={cy}
       r={r}
       fill={glow ? `url(#${gradientId})` : "currentColor"}
-      initial={glow ? { opacity: 0.4, scale: 1 } : {}}
+      initial={animateGlow ? { opacity: 0.4, scale: 1 } : {}}
       animate={
-        glow
+        animateGlow
           ? {
               opacity: [0.4, 1, 0.4],
               scale: [1, 1.5, 1],
@@ -55,7 +58,7 @@ function Dot({
           : {}
       }
       transition={
-        glow
+        animateGlow
           ? {
               duration: timing.duration,
               repeat: Infinity,
@@ -94,18 +97,22 @@ export function DotPattern({
     };
 
     updateDimensions();
-    window.addEventListener("resize", updateDimensions);
-    return () => window.removeEventListener("resize", updateDimensions);
+    // The hero card can grow after a late font swap without the window resizing.
+    const observer = new ResizeObserver(updateDimensions);
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
   }, []);
 
-  const cols = Math.max(1, Math.ceil(dimensions.width / width));
-  const rows = Math.max(1, Math.ceil(dimensions.height / height));
+  const stepX = Number.isFinite(width) && width > 0 ? width : 18;
+  const stepY = Number.isFinite(height) && height > 0 ? height : 18;
+  const cols = Math.max(1, Math.ceil(dimensions.width / stepX));
+  const rows = Math.max(1, Math.ceil(dimensions.height / stepY));
   const dots = Array.from({ length: cols * rows }, (_, i) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
     return {
-      x: col * width + cx + x,
-      y: row * height + cy + y,
+      x: col * stepX + cx + x,
+      y: row * stepY + cy + y,
     };
   });
 

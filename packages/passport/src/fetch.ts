@@ -24,6 +24,11 @@ export async function fetchArtifact(url: string, kind: Artifact["kind"], ctx: Fe
       method: "GET", credentials: "omit", redirect: "manual", referrerPolicy: "no-referrer",
       cache: "no-store", mode: "cors", signal: controller.signal,
     });
+    // A fetch that ignores the signal can still resolve after the timeout; drop that response untouched.
+    if (controller.signal.aborted) {
+      void response.body?.cancel().catch(() => {});
+      throw new PassportError("TIMEOUT", `${kind} exceeded ${ctx.limits.timeoutMs} ms at ${url}.`);
+    }
     const requestedOrigin = new URL(url).origin;
     if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400) || response.redirected || (response.url && new URL(response.url).origin !== requestedOrigin)) {
       let detail = `Redirect refused for ${kind} at ${url}.`;
