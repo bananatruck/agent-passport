@@ -2,6 +2,7 @@
  * Source: https://magicui.design/r/terminal.json (https://magicui.design/docs/components/terminal)
  * Library: Magic UI
  * License: MIT License (https://github.com/magicuidesign/magicui/blob/main/LICENSE.md)
+ * Copyright (c) Magic UI. The full license text, including its permission notice, ships with the site in public/third-party-notices.txt.
  */
 
 import React, {

@@ -2,6 +2,7 @@
  * Source: https://magicui.design/r/animated-beam.json (https://magicui.design/docs/components/animated-beam)
  * Library: Magic UI
  * License: MIT License (https://github.com/magicuidesign/magicui/blob/main/LICENSE.md)
+ * Copyright (c) Magic UI. The full license text, including its permission notice, ships with the site in public/third-party-notices.txt.
  */
 
 import React, { useEffect, useId, useState, type RefObject } from "react";
@@ -103,8 +104,9 @@ export const AnimatedBeam: React.FC<AnimatedBeamProps> = ({
       updatePath();
     });
 
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
+    // Watch the endpoints too: a late font can widen a node without resizing the row.
+    for (const element of [containerRef.current, fromRef.current, toRef.current]) {
+      if (element) resizeObserver.observe(element);
     }
 
     updatePath();

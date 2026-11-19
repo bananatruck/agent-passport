@@ -2,6 +2,7 @@
  * Source: https://reactbits.dev/r/SpotlightCard-TS-TW.json (https://reactbits.dev/components/spotlight-card)
  * Library: React Bits
  * License: MIT + Commons Clause License Condition v1.0 (https://github.com/DavidHDev/react-bits/blob/main/LICENSE.md)
+ * Copyright (c) 2026 David Haz. The full license text, including its permission notice, ships with the site in public/third-party-notices.txt.
  */
 
 import React, { useEffect, useRef } from "react";
@@ -132,9 +133,10 @@ export const SpotlightCard = ({
     grain: clamp(grain, 0, 1),
   };
   const settingsRef = useRef(settings);
-  settingsRef.current = settings;
 
   useEffect(() => {
+    // Publish new settings after the render commits, then wake the animation loop.
+    settingsRef.current = settings;
     wakeRef.current?.();
   });
 
