@@ -187,9 +187,12 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
           headers: { "content-type": file.contentType },
         });
       }
-      // A REST toolbox call goes only to the URL the guard checked: never follow a redirect elsewhere.
-      if (restTargets.has(url)) return realFetch(input as RequestInfo, { ...init, redirect: "error" });
       const withoutQuery = url.split(/[?#]/)[0]!;
+      // One endpoint may serve both tools, so REST redirect refusal must retain MCP bounds.
+      if (restTargets.has(url)) {
+        const restInit: RequestInit = { ...init, redirect: "error" };
+        return mcpEndpoints.has(withoutQuery) ? boundedMcpFetch(input, restInit, withoutQuery) : realFetch(input as RequestInfo, restInit);
+      }
       if (mcpEndpoints.has(withoutQuery)) return boundedMcpFetch(input, init, withoutQuery);
       const origin = new URL(url).origin;
       if (sealedOrigins.has(origin)) {

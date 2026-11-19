@@ -320,6 +320,33 @@ describe("installPassportGuard", () => {
     await expect(response.text()).rejects.toThrow(/1024 bytes/);
   });
 
+  it("keeps MCP bounds and REST redirect refusal when both tools share an endpoint", async () => {
+    const files = peerFiles("Answer ferry times.");
+    const endpoint = `${PEER}/mcp`;
+    serveJson(PEER, {
+      ...files,
+      "/harbor_ferry.network.json": {
+        tools: [
+          { ...files["/harbor_ferry.network.json"].tools[0], tools: ["times", endpoint] },
+          { name: "times", toolbox: "requests_get", args: { url: endpoint } },
+        ],
+      },
+    });
+    routes.set(endpoint, () => ({ status: 200, body: "x".repeat(4096) }));
+    const redirects: (RequestRedirect | undefined)[] = [];
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) === endpoint) redirects.push(init?.redirect);
+      return inner(input, init);
+    };
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null, parseHocon, approveUnreviewed: async () => true, mcpLimits: { bytes: 1024, timeoutMs: 2000 } });
+    await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    const response = await fetch(endpoint, { method: "POST", body: "{}" });
+    await expect(response.text()).rejects.toThrow(/1024 bytes/);
+    expect(redirects).toEqual(["error"]);
+  });
+
   it("keeps HOCON-only syntax away from the runtime's parser (runtime finding hocon.js:182)", async () => {
     serveJson(PEER, peerFiles("Answer ferry times."));
     routes.set(`${PEER}/harbor_ferry.network.json`, () => ({ status: 200, body: "{ tools: [ { name: ferry_desk, instructions: hi } ] }" }));
