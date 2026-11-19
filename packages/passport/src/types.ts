@@ -111,6 +111,8 @@ export interface AgentSummary {
   tools: ToolRef[];
   /** "llm" when it has instructions, "coded" when it has class (bundle code), "rest" when it has toolbox (a built-in REST call), "other" otherwise. */
   type: "llm" | "coded" | "rest" | "other";
+  /** For a REST toolbox agent: the URL the runtime will call (args.url). */
+  restUrl?: string;
   /** Private-context allow rules: allow.to_downstream.sly_data and allow.to_upstream.sly_data. */
   allowSly: { toDownstream: string[]; toUpstream: string[] };
 }

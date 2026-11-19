@@ -72,6 +72,12 @@ async function runViewport(browser, { name, width, height }) {
   await page.goto(SITE, { waitUntil: "networkidle" });
   await page.waitForSelector("#agent-app .ns-input", { timeout: 20000 });
   await shot(page, `${name}-hero`);
+  // Other sites load bridge/action-bridge.html, which reads this manifest (runtime finding action-bridge.js:2).
+  const bridge = await page.evaluate(async (site) => {
+    const r = await fetch(new URL("bridge/agent-manifest.json", site));
+    return r.ok ? r.json() : null;
+  }, SITE);
+  check(bridge?.networks?.[0]?.name === "trip_desk" && !bridge.actions, `${name}: the action bridge manifest names trip_desk and shares no actions`);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   check(overflow <= 0, `${name}: no horizontal scroll (overflow ${overflow}px)`);
 
