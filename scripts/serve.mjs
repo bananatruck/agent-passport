@@ -119,6 +119,12 @@ function staticServer(base, { cors, rewrites = {}, spa = false }) {
 function hazardServer() {
   return createServer((req, res) => {
     const cors = { "access-control-allow-origin": "*" };
+    // GET only: a HEAD request gets no body, so res.write would always succeed and the endless
+    // fixture below would never yield.
+    if (req.method !== "GET") {
+      res.writeHead(405, { ...cors, allow: "GET" }).end();
+      return;
+    }
     const path = (req.url || "/").split("?")[0];
     const [, id, file] = path.split("/");
     if (file !== "agent-manifest.json") {

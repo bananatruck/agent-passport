@@ -20,8 +20,11 @@ describe("review 3: inspection", () => {
   it("6: refuses a definition published at the manifest's or links.json's own URL", async () => {
     for (const hocon of ["/links.json", "/agent-manifest.json"]) {
       const m = { networks: [{ name: "transit", front_man: "desk", hocon }] };
-      const r = await inspectPeer(peer, { fetch: fakeFetch({ ...routes(m), [`https://peer.example/agents${hocon}`]: JSON.stringify(definition()) }) });
+      // Keep the real manifest at its address, so the refusal can only come from the collision check.
+      const table = hocon === "/links.json" ? { ...routes(m), "https://peer.example/agents/links.json": JSON.stringify(definition()) } : routes(m);
+      const r = await inspectPeer(peer, { fetch: fakeFetch(table) });
       expect(r.verdict, hocon).toBe("refused");
+      expect(r.checks.some((c) => c.code === "DEFINITION_SHAPE" && /needs its own file/.test(c.detail)), hocon).toBe(true);
     }
   });
 
@@ -139,5 +142,27 @@ describe("review 3: CLI", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("review 3, second pass", () => {
+  it("reads a links.json the runtime accepts with any 2xx status", async () => {
+    const d = { link_slots: { x: {} }, tools: [{ name: "desk", instructions: "Help.", tools: ["x"] }] };
+    const body = JSON.stringify({ networks: { transit: { x: "https://linked.example/net" } } });
+    const table = { ...routes(manifest(), d), "https://peer.example/agents/links.json": () => new Response(body, { status: 201, headers: { "content-type": "application/json" } }) };
+    const r = await inspectPeer(peer, { fetch: fakeFetch(table) });
+    expect(r.network?.links).toEqual({ x: "https://linked.example/net" });
+    expect(r.network?.origins).toContain("https://linked.example");
+  });
+
+  it("treats a backslash after the leading slash as the runtime's URL parser does", async () => {
+    const r = await inspect(manifest(), { tools: [{ name: "desk", instructions: "Help.", tools: ["/\\outside.example/net"] }] });
+    expect(r.network?.origins).toContain("https://outside.example");
+    expect(r.network?.origins).not.toContain("calling site");
+  });
+
+  it("refuses to write a pin file its own reader would reject", async () => {
+    const pin = createPin(await inspect());
+    expect(() => serializePinFile({ version: 1, pins: [pin, pin] })).toThrow(expect.objectContaining({ code: "PIN_FILE_INVALID" }));
   });
 });

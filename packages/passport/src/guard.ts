@@ -72,6 +72,8 @@ interface ServedFile {
   status: number;
   body: string;
   contentType: string;
+  /** Called when the runtime fetches this file. */
+  onServe?: (url: string) => void;
 }
 
 /** Strict structural equality for JSON values (objects, arrays, strings, numbers, booleans, null). */
@@ -131,6 +133,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     if (url) {
       const file = served.get(url);
       if (file) {
+        file.onServe?.(url);
         return new Response(file.status === 404 ? null : file.body, {
           status: file.status,
           headers: { "content-type": file.contentType },
@@ -213,7 +216,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
       [new URL(definition!.url).href, { status: 200, body: definition!.text, contentType: "application/json" }],
       [
         new URL(`${origin}/links.json`).href,
-        links && links.status === 200
+        links && links.status >= 200 && links.status < 300
           ? { status: 200, body: links.text, contentType: "application/json" }
           : { status: 404, body: "", contentType: "text/plain" },
       ],
@@ -234,17 +237,32 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
         options.onDecision?.(report, true, context);
         return compiled;
       }
-      for (const [url, file] of files) served.set(url, file);
+      // Release the queue as soon as the runtime has read every checked file. After that the runtime
+      // may wait on the visitor (for example for a partner's action bridge), and that wait must not
+      // hold up other partners. resolveRemote settling also releases it.
+      const remaining = new Set(files.map(([url]) => url));
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        for (const [url] of files) served.delete(url);
+        const left = (sealedOrigins.get(peerOrigin) ?? 1) - 1;
+        if (left <= 0) sealedOrigins.delete(peerOrigin);
+        else sealedOrigins.set(peerOrigin, left);
+        releaseQueue();
+      };
+      const onServe = (url: string) => {
+        remaining.delete(url);
+        if (remaining.size === 0) release();
+      };
+      for (const [url, file] of files) served.set(url, { ...file, onServe });
       sealedOrigins.set(peerOrigin, (sealedOrigins.get(peerOrigin) ?? 0) + 1);
       try {
         const session = await originalResolveRemote.call(engine, ref, chain, parentSpan, sourceManifest);
         options.onDecision?.(report, true, context);
         return session;
       } finally {
-        for (const [url] of files) served.delete(url);
-        const left = (sealedOrigins.get(peerOrigin) ?? 1) - 1;
-        if (left <= 0) sealedOrigins.delete(peerOrigin);
-        else sealedOrigins.set(peerOrigin, left);
+        release();
       }
     } finally {
       releaseQueue();

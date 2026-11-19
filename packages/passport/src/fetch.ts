@@ -46,7 +46,9 @@ export async function fetchArtifact(url: string, kind: Artifact["kind"], ctx: Fe
       void response.body?.cancel().catch(() => {});
       return { kind, url, origin: requestedOrigin, bytes: 0, sha256: await sha256Hex(new Uint8Array()), text: "", status: 404, contentType };
     }
-    if (response.status !== 200) throw new PassportError("HTTP_STATUS", `${kind} returned HTTP ${response.status} at ${url}.`);
+    // The runtime reads links.json whenever response.ok (any 2xx); the manifest and definition must be exactly 200.
+    const accepted = kind === "links" ? response.status >= 200 && response.status < 300 : response.status === 200;
+    if (!accepted) throw new PassportError("HTTP_STATUS", `${kind} returned HTTP ${response.status} at ${url}.`);
     reader = response.body?.getReader();
     const media = contentType.split(";", 1)[0]?.trim().toLowerCase();
     if (media && !/^(?:application\/json|[^/\s]+\/[^/\s]+\+json|text\/json|text\/plain)$/.test(media)) {
@@ -75,7 +77,7 @@ export async function fetchArtifact(url: string, kind: Artifact["kind"], ctx: Fe
       // Preserve BOM during decode, then remove exactly one leading BOM.
       text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes).replace(/^\uFEFF/, "");
     } catch { throw new PassportError("NOT_UTF8", `${kind} is not valid UTF-8.`); }
-    return { kind, url, origin: requestedOrigin, bytes: size, sha256: await sha256Hex(bytes), text, status: 200, contentType };
+    return { kind, url, origin: requestedOrigin, bytes: size, sha256: await sha256Hex(bytes), text, status: response.status, contentType };
   };
   try { return await Promise.race([read(), timeout]); }
   catch (error) {
