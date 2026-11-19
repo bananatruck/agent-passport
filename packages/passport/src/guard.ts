@@ -48,6 +48,12 @@ export interface GuardOptions {
   approveChanged?: (report: PassportReport, context: GuardContext) => Promise<boolean>;
   /** Called with the final decision for each check. */
   onDecision?: (report: PassportReport, loaded: boolean, context: GuardContext) => void;
+  /**
+   * Limits on responses from MCP servers that a loaded partner declared. The reference runtime
+   * reads MCP responses without a deadline or size limit; the guard adds both from outside.
+   * Defaults: 60 seconds and 5 MiB.
+   */
+  mcpLimits?: { timeoutMs?: number; bytes?: number };
 }
 
 export interface GuardHandle {
@@ -127,6 +133,48 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   // Guarded compiles run one at a time: two overlapping resolutions could otherwise replace or
   // delete each other's served files. Inspections still run in parallel.
   let compileQueue: Promise<void> = Promise.resolve();
+  // Endpoints declared by partners the guard has loaded. The runtime calls them later without
+  // further checks, so the guard tightens those calls from outside the runtime.
+  const restTargets = new Set<string>();
+  const mcpEndpoints = new Set<string>();
+  const mcpTimeoutMs = options.mcpLimits?.timeoutMs ?? 60_000;
+  const mcpBytes = options.mcpLimits?.bytes ?? 5 * 1024 * 1024;
+
+  const boundedMcpFetch = async (input: RequestInfo | URL, init: RequestInit | undefined, url: string): Promise<Response> => {
+    const deadline = new AbortController();
+    const timer = setTimeout(() => deadline.abort(new Error(`Agent Passport: the MCP server at ${url} did not finish within ${mcpTimeoutMs} ms.`)), mcpTimeoutMs);
+    const signals = [deadline.signal, init?.signal, input instanceof Request ? input.signal : undefined].filter((s): s is AbortSignal => !!s);
+    let response: Response;
+    try {
+      response = await realFetch(input as RequestInfo, { ...init, signal: AbortSignal.any(signals) });
+    } catch (error) {
+      clearTimeout(timer);
+      throw error;
+    }
+    if (!response.body) {
+      clearTimeout(timer);
+      return response;
+    }
+    let size = 0;
+    const capped = response.body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          size += chunk.byteLength;
+          if (size > mcpBytes) {
+            clearTimeout(timer);
+            deadline.abort();
+            controller.error(new Error(`Agent Passport: the MCP response from ${url} exceeded ${mcpBytes} bytes.`));
+            return;
+          }
+          controller.enqueue(chunk);
+        },
+        flush() {
+          clearTimeout(timer);
+        },
+      }),
+    );
+    return new Response(capped, { status: response.status, statusText: response.statusText, headers: response.headers });
+  };
 
   const guardedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = requestUrl(input, pageBase());
@@ -139,6 +187,10 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
           headers: { "content-type": file.contentType },
         });
       }
+      // A REST toolbox call goes only to the URL the guard checked: never follow a redirect elsewhere.
+      if (restTargets.has(url)) return realFetch(input as RequestInfo, { ...init, redirect: "error" });
+      const withoutQuery = url.split(/[?#]/)[0]!;
+      if (mcpEndpoints.has(withoutQuery)) return boundedMcpFetch(input, init, withoutQuery);
       const origin = new URL(url).origin;
       if (sealedOrigins.has(origin)) {
         throw new TypeError(`Agent Passport: refused an unverified request to ${origin} while loading a checked partner.`);
@@ -147,6 +199,13 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     return realFetch(input as RequestInfo, init);
   }) as typeof fetch;
   globalThis.fetch = guardedFetch;
+
+  const remember = (report: PassportReport) => {
+    for (const agent of report.network?.agents ?? []) {
+      if (agent.restUrl) restTargets.add(new URL(agent.restUrl).href);
+      for (const tool of agent.tools) if (tool.kind === "mcp") mcpEndpoints.add(new URL(tool.ref).href.split(/[?#]/)[0]!);
+    }
+  };
 
   const loadPins = async (): Promise<PinFile | null> =>
     typeof options.pins === "function" ? await options.pins() : options.pins;
@@ -234,6 +293,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
       // Another resolution of the same partner may have compiled it while this one waited.
       const compiled = engine.registry.get(origin, lastSeg);
       if (compiled) {
+        remember(report);
         options.onDecision?.(report, true, context);
         return compiled;
       }
@@ -259,6 +319,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
       sealedOrigins.set(peerOrigin, (sealedOrigins.get(peerOrigin) ?? 0) + 1);
       try {
         const session = await originalResolveRemote.call(engine, ref, chain, parentSpan, sourceManifest);
+        remember(report);
         options.onDecision?.(report, true, context);
         return session;
       } finally {

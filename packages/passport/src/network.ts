@@ -181,6 +181,7 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
     // Strict: any class key needs a declared bundle. But decide "REST toolbox" exactly as the
     // runtime's classify_tool does (truthy class first, then truthy toolbox), so a falsy class
     // such as null cannot hide a toolbox call the runtime will still make.
+    let restUrl: string | undefined;
     const coded = Object.hasOwn(agent, "class");
     const rest = !agent.class && !!agent.toolbox;
     if (coded && !codedTools) fail("UNDECLARED_CODE", `definition.code.${name}`, `Agent ${name} declares executable code without coded_tools.bundle.`);
@@ -196,6 +197,7 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
       // runner.js: (args.method || "GET").toUpperCase(); browsers refuse to send CONNECT, TRACE and TRACK.
       const method = (typeof args.method === "string" && args.method ? args.method : "GET").toUpperCase();
       if (["CONNECT", "TRACE", "TRACK"].includes(method)) throw new PassportError("DEFINITION_SHAPE", `REST toolbox agent ${name} uses ${method}, which a browser refuses to send; the runtime would fail on every call.`);
+      if (target) restUrl = target.href;
       if (!target) fail("DEFINITION_SHAPE", `definition.rest.${name}`, `REST toolbox agent ${name} has no valid http(s) args.url.`);
       else {
         origins.add(target.origin);
@@ -232,7 +234,7 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
     if (typeof agent.instructions === "string" && agent.instructions) parts.push(agent.instructions.trim());
     if (typeof agent.command === "string" && agent.command) parts.push(agent.command.trim());
     const instructions = parts.join("\n\n");
-    summaries.push({ name, description: typeof agent.description === "string" ? agent.description : "", instructions, instructionsSha256: await sha256Hex(instructions), tools, type: rest ? "rest" : agent.class ? "coded" : instructions ? "llm" : "other", allowSly: { toDownstream: stringList(down), toUpstream: stringList(up) } });
+    summaries.push({ name, description: typeof agent.description === "string" ? agent.description : "", instructions, instructionsSha256: await sha256Hex(instructions), tools, type: rest ? "rest" : agent.class ? "coded" : instructions ? "llm" : "other", ...(restUrl ? { restUrl } : {}), allowSly: { toDownstream: stringList(down), toUpstream: stringList(up) } });
   }
   const front = runtimeFrontMan(agents);
   if (front !== entry.front_man) fail("FRONT_MAN_MISMATCH", "definition.front-man", `Manifest front_man ${JSON.stringify(entry.front_man)} differs from runtime front agent ${JSON.stringify(front)}.`);

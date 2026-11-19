@@ -281,6 +281,65 @@ describe("installPassportGuard", () => {
     expect(second).toEqual({ ref: `${OTHER}/harbor_ferry` });
   });
 
+  it("never lets a loaded partner's REST toolbox call follow a redirect (round 4, runtime finding: REST redirects)", async () => {
+    const files = peerFiles("Answer ferry times.");
+    const definitionWithRest = {
+      ...files["/harbor_ferry.network.json"],
+      tools: [
+        { ...files["/harbor_ferry.network.json"].tools[0], tools: ["times"] },
+        { name: "times", toolbox: "requests_get", args: { url: `${PEER}/api/times` } },
+      ],
+    };
+    serveJson(PEER, { ...files, "/harbor_ferry.network.json": definitionWithRest });
+    const seen: { url: string; redirect?: RequestRedirect }[] = [];
+    const inner = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push({ url: String(input instanceof Request ? input.url : input), redirect: init?.redirect });
+      return inner(input, init);
+    }) as typeof fetch;
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null, parseHocon, approveUnreviewed: async () => true });
+    await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    await globalThis.fetch(`${PEER}/api/times`);
+    expect(seen.find((s) => s.url === `${PEER}/api/times`)?.redirect).toBe("error");
+  });
+
+  it("bounds responses from an MCP server a loaded partner declared (round 4, runtime finding: unbounded MCP reads)", async () => {
+    const files = peerFiles("Answer ferry times.");
+    const mcpUrl = `${OTHER}/mcp`;
+    const definitionWithMcp = {
+      ...files["/harbor_ferry.network.json"],
+      tools: [{ ...files["/harbor_ferry.network.json"].tools[0], tools: [mcpUrl] }],
+    };
+    serveJson(PEER, { ...files, "/harbor_ferry.network.json": definitionWithMcp });
+    routes.set(mcpUrl, () => ({ status: 200, body: "x".repeat(4096), type: "application/json" }));
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null, parseHocon, approveUnreviewed: async () => true, mcpLimits: { bytes: 1024, timeoutMs: 2000 } });
+    await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    const response = await globalThis.fetch(mcpUrl, { method: "POST", body: "{}" });
+    await expect(response.text()).rejects.toThrow(/1024 bytes/);
+  });
+
+  it("keeps HOCON-only syntax away from the runtime's parser (runtime finding hocon.js:182)", async () => {
+    serveJson(PEER, peerFiles("Answer ferry times."));
+    routes.set(`${PEER}/harbor_ferry.network.json`, () => ({ status: 200, body: "{ tools: [ { name: ferry_desk, instructions: hi } ] }" }));
+    const engine = await bootEngine();
+    let parsed = 0;
+    guard = installPassportGuard(engine, {
+      pins: null,
+      parseHocon: (text: string) => {
+        parsed += 1;
+        return parseHocon(text);
+      },
+      approveUnreviewed: async () => true,
+    });
+    log.length = 0;
+    await expect(engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest)).rejects.toBeInstanceOf(PassportBlockedError);
+    expect(parsed).toBe(0);
+    // Only Agent Passport's own inspection fetched the file; the runtime never did.
+    expect(log.filter((u) => u === `${PEER}/harbor_ferry.network.json`)).toHaveLength(1);
+  });
+
   it("uninstall restores the runtime and fetch", async () => {
     const engine = await bootEngine();
     const original = engine.resolveRemote;
