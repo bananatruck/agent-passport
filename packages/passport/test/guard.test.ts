@@ -395,6 +395,43 @@ describe("installPassportGuard", () => {
     expect(seen).toEqual(["error"]);
   });
 
+  it("does not reuse MCP credentials or session IDs in another resolution", async () => {
+    const endpoint = "https://mcp.example/mcp";
+    const engine = await bootEngine();
+    engine.top.manifest.allowed_peers.push(endpoint);
+    const sent: Headers[] = [];
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) !== endpoint) return inner(input, init);
+      sent.push(new Headers(init?.headers));
+      const rpc = JSON.parse(String(init?.body));
+      return Response.json({ jsonrpc: "2.0", id: rpc.id, result: rpc.method === "tools/list" ? { tools: [] } : {} }, { headers: { "Mcp-Session-Id": "test-session" } });
+    };
+    guard = installPassportGuard(engine, { pins: null });
+    const first = await engine.resolveMcp(endpoint, null, { http_headers: { [endpoint]: { Authorization: "test-only-placeholder" } } }, engine.top.manifest);
+    await first.listTools();
+    sent.length = 0;
+    const second = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    await second.listTools();
+    expect(sent.map((h) => h.get("authorization"))).toEqual([null, null, null]);
+    expect(sent[0]?.get("mcp-session-id")).toBeNull();
+    expect(second).not.toBe(first);
+  });
+
+  it("refuses configured MCP authentication over HTTP before sending any request", async () => {
+    const engine = await bootEngine();
+    const endpoint = `${PEER}/mcp`;
+    guard = installPassportGuard(engine, { pins: null });
+    log.length = 0;
+    const blocked = await engine.resolveMcp(endpoint, null, { http_headers: { [endpoint]: { "X-Private-Token": "test-only-placeholder" } } }, engine.top.manifest)
+      .then(() => false, (error: unknown) => error instanceof Error && /HTTPS/.test(error.message));
+    expect(blocked).toBe(true);
+    expect(log).toEqual([]);
+    // Credential-free local development remains available.
+    const anonymous = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    expect(anonymous.headers).toEqual({});
+  });
+
   it("keeps HOCON-only syntax away from the runtime's parser (runtime finding hocon.js:182)", async () => {
     serveJson(PEER, peerFiles("Answer ferry times."));
     routes.set(`${PEER}/harbor_ferry.network.json`, () => ({ status: 200, body: "{ tools: [ { name: ferry_desk, instructions: hi } ] }" }));

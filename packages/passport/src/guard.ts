@@ -23,6 +23,8 @@ export interface NsdeployEngine {
     checkCycle(chain: string[], origin: string, agentName: string): void;
   };
   resolveRemote(ref: string, chain: string[], parentSpan: unknown, sourceManifest: unknown): Promise<unknown>;
+  resolveMcp(ref: string | { url: string }, parentSpan: unknown, slyData: unknown, sourceManifest: unknown): Promise<unknown>;
+  _mcpClients?: Map<string, unknown>;
   _assertAllowedPeer(target: string, sourceManifest: unknown): void;
 }
 
@@ -125,6 +127,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   const originalFetch: typeof fetch = globalThis.fetch;
   const realFetch: typeof fetch = originalFetch.bind(globalThis);
   const originalResolveRemote = engine.resolveRemote;
+  const originalResolveMcp = engine.resolveMcp;
   const reports = new Map<string, PassportReport>();
   // URL -> verified file, active only while the original resolveRemote runs for that partner.
   const served = new Map<string, ServedFile>();
@@ -139,6 +142,22 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   const mcpEndpoints = new Set<string>();
   const mcpTimeoutMs = options.mcpLimits?.timeoutMs ?? 60_000;
   const mcpBytes = options.mcpLimits?.bytes ?? 5 * 1024 * 1024;
+  const mcpCredentialFingerprint = new Map<string, string>();
+
+  function mcpTarget(ref: string | { url: string }): string {
+    return typeof ref === "string" ? ref : ref.url;
+  }
+
+  function mcpHeaders(slyData: unknown, url: string): Record<string, string> {
+    const root = slyData as { http_headers?: Record<string, Record<string, string>> } | null | undefined;
+    return root?.http_headers?.[url] ?? {};
+  }
+
+  function mcpCredentialKey(headers: Record<string, string>): string {
+    const keys = Object.keys(headers).sort();
+    if (!keys.length) return "";
+    return JSON.stringify(keys.map((k) => [k, headers[k] as string]));
+  }
 
   const boundedMcpFetch = async (input: RequestInfo | URL, init: RequestInit | undefined, url: string): Promise<Response> => {
     const deadline = new AbortController();
@@ -341,12 +360,33 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     }
   }
 
+  async function guardedResolveMcp(
+    this: NsdeployEngine,
+    ref: string | { url: string },
+    parentSpan: unknown,
+    slyData: unknown,
+    sourceManifest: unknown,
+  ): Promise<unknown> {
+    const url = mcpTarget(ref);
+    const headers = mcpHeaders(slyData, url);
+    if (Object.keys(headers).length && new URL(url).protocol === "http:") {
+      throw new TypeError(`Agent Passport: refuse to send MCP credentials over HTTP; use HTTPS for ${url}.`);
+    }
+    const credKey = mcpCredentialKey(headers);
+    const previous = mcpCredentialFingerprint.get(url);
+    if (previous !== undefined && previous !== credKey) engine._mcpClients?.delete(url);
+    mcpCredentialFingerprint.set(url, credKey);
+    return originalResolveMcp.call(engine, ref, parentSpan, slyData, sourceManifest);
+  }
+
   engine.resolveRemote = guardedResolveRemote;
+  engine.resolveMcp = guardedResolveMcp;
 
   return {
     reports,
     uninstall() {
       engine.resolveRemote = originalResolveRemote;
+      engine.resolveMcp = originalResolveMcp;
       if (globalThis.fetch === guardedFetch) globalThis.fetch = originalFetch;
     },
   };
