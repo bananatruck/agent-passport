@@ -5,15 +5,15 @@ The hackathon rules ask for a video under two minutes that shows the project run
 
 ## Footage
 
-`node scripts/record-demo.mjs` drives the live site in Playwright's bundled Chromium at 1920 by 1080 through the seven shots of the video script and writes `submission/video/agent-passport-footage.mp4` (H.264, no audio) and `submission/video/scenes.json` (each scene's start time).
+`node scripts/record-demo.mjs` drives the live site in Playwright's bundled Chromium at 1920 by 1080 through the seven shots of [the video script](VIDEO_SCRIPT.md) and writes `submission/video/agent-passport-footage.mp4` (H.264, no audio) and `submission/video/scenes.json` (each scene's start time).
 Set `SITE_URL=http://127.0.0.1:4173/` to record a local `pnpm demo` instead of the live site.
 Each scene lasts as long as its narration takes to read at about 150 words per minute; the lengths are in `SCENES` at the top of the script.
 The AI model settings panel stays closed, because it lists provider names, and the footage has no captions or music.
-`submission/` is gitignored, so the video files are never committed.
+`submission/` is gitignored, so the video files are never committed; the script they follow is tracked in `docs/VIDEO_SCRIPT.md`.
 
 ## Voice
 
-Play the footage, read the narration from the video script aloud into any recorder, then run `scripts/mux-voice.sh <your-recording>`.
+Play the footage, read the narration from [docs/VIDEO_SCRIPT.md](VIDEO_SCRIPT.md) aloud into any recorder, then run `scripts/mux-voice.sh <your-recording>`.
 It levels the loudness, lays the recording over the footage, cuts anything past the end of the footage, refuses a result of two minutes or more, and writes `submission/video/agent-passport-final.mp4`.
 It changes nothing else about the voice.
 

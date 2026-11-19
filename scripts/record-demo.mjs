@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Records silent demo footage of the live site for the submission video, following the
-// shots in submission/VIDEO_SCRIPT.md, at 1920x1080, in Playwright's bundled Chromium.
+// shots in docs/VIDEO_SCRIPT.md, at 1920x1080, in Playwright's bundled Chromium.
 // Each scene lasts as long as its narration takes to read aloud at a normal pace, so the
 // author can read the script over the footage (scripts/mux-voice.sh adds the voice).
 //
@@ -25,7 +25,7 @@ const WIDTH = 1920;
 const HEIGHT = 1080;
 
 // Scene lengths in seconds: the narration's word count at about 150 words per minute,
-// plus a short pause. They are listed with the narration in submission/VIDEO_SCRIPT.md.
+// plus a short pause. They are listed with the narration in docs/VIDEO_SCRIPT.md.
 export const SCENES = [
   { id: 1, title: "The idea", seconds: 17 },
   { id: 2, title: "Harbor Ferry is verified", seconds: 18 },
@@ -80,7 +80,9 @@ async function allowNextConsent(page) {
 }
 
 async function main() {
-  await rm(outDir, { recursive: true, force: true });
+  // Clear only the temporary recording; a finished video (for example agent-passport-final.mp4
+  // with the author's voice) stays until a new recording succeeds.
+  await rm(join(outDir, "raw"), { recursive: true, force: true });
   await mkdir(join(outDir, "raw"), { recursive: true });
   const browser = await chromium.launch({ executablePath: chromiumPath(), headless: true });
   const context = await browser.newContext({
@@ -154,12 +156,14 @@ async function main() {
   if (!raw) throw new Error("Playwright wrote no video.");
   const webm = join(outDir, "raw", raw);
   const mp4 = join(outDir, "agent-passport-footage.mp4");
+  const pending = join(outDir, "raw", "footage.mp4");
   execFileSync("ffmpeg", [
     "-y", "-loglevel", "error",
     "-ss", trimSeconds.toFixed(2), "-i", webm, "-t", String(total),
     "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-r", "30",
-    "-movflags", "+faststart", "-an", mp4,
+    "-movflags", "+faststart", "-an", pending,
   ]);
+  await rename(pending, mp4);
   await rename(webm, join(outDir, "raw", "footage.webm"));
   await writeFile(join(outDir, "scenes.json"), `${JSON.stringify({ site: SITE, totalSeconds: total, scenes: starts }, null, 2)}\n`);
   console.log(`Wrote ${mp4} (${total} s) and scenes.json`);
