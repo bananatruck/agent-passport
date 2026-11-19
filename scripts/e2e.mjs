@@ -81,6 +81,7 @@ async function runViewport(browser, { name, width, height }) {
   await page.click("#agent-app #ns-send");
   const deadline = Date.now() + 60000;
   let approvals = 0;
+  let finished = false;
   while (Date.now() < deadline) {
     const allow = page.locator('#agent-app .ns-consent-actions button[data-d="allow"]').first();
     if (await allow.count()) {
@@ -90,9 +91,13 @@ async function runViewport(browser, { name, width, height }) {
     }
     const cards = await page.locator("agent-passport-card").count();
     const busy = await page.locator("#agent-app .ns-inputbar[data-turn-active='true']").count();
-    if (cards >= 3 && !busy) break;
+    if (cards >= 3 && !busy) {
+      finished = true;
+      break;
+    }
     await page.waitForTimeout(250);
   }
+  check(finished, `${name}: the turn finished before the deadline`);
   check(approvals === 3, `${name}: three consent prompts approved (got ${approvals})`);
   const verdicts = await page.$$eval("[data-demo-passports] agent-passport-card", (els) =>
     els.map((el) => el.shadowRoot?.querySelector(".stamp")?.textContent?.replace(/\d{4}-\d{2}-\d{2}/, "").trim()),
@@ -120,8 +125,13 @@ async function runViewport(browser, { name, width, height }) {
   const hazard = inspector.locator("button", { hasText: "Redirects to another origin" });
   if (await hazard.count()) {
     await hazard.first().click();
-    await page.waitForFunction(() => /redirect/i.test(document.querySelector("[data-inspector] agent-passport-card")?.shadowRoot?.textContent ?? ""));
-    check(true, `${name}: Inspector refuses a cross-origin redirect`);
+    // Wait for the hazard's own card, then read its verdict: the earlier Gull Deals card also mentions redirects.
+    await page.waitForFunction(() => (document.querySelector("[data-inspector] agent-passport-card")?.shadowRoot?.textContent ?? "").includes("redirect_away"));
+    const hazardCard = await page.$eval("[data-inspector] agent-passport-card", (el) => ({
+      stamp: el.shadowRoot?.querySelector(".stamp")?.textContent ?? "",
+      text: el.shadowRoot?.textContent ?? "",
+    }));
+    check(hazardCard.stamp.includes("Refused") && /Redirect refused/.test(hazardCard.text), `${name}: Inspector refuses a cross-origin redirect`);
   }
 
   check(errors.length === 0, `${name}: no page errors (${errors.slice(0, 3).join(" | ")})`);
