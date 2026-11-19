@@ -108,6 +108,8 @@ export function isMcpRef(ref: string): boolean {
  */
 export const CALLING_SITE = "calling site";
 function remoteOrigin(ref: string): string {
+  // The URL parser reads "\\" as "/" in http(s) URLs, so "/\\host/x" is the network path "//host/x".
+  ref = ref.replace(/\\/g, "/");
   if (ref.startsWith("//")) return contactOrigin(`https:${ref}`, "");
   if (ref.startsWith("/")) return CALLING_SITE;
   return contactOrigin(ref, "");

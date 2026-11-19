@@ -100,6 +100,6 @@ export function parsePinFile(text: string): PinFile {
 export function serializePinFile(file: PinFile): string {
   const text = JSON.stringify({ version: 1, pins: [...file.pins].sort((a, b) => a.network < b.network ? -1 : a.network > b.network ? 1 : 0) }, null, 2) + "\n";
   // Refuse to write what parsePinFile would refuse to read.
-  parseStrictJson(text, PIN_FILE_LIMITS);
+  parsePinFile(text);
   return text;
 }

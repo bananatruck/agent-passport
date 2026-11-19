@@ -96,8 +96,8 @@ export async function inspectPeer(input: string, options: InspectOptions = {}): 
     stage = "fetch.links";
     try {
       const artifact = await fetchArtifact(resolveUrl(parsed.siteBase, "/links.json"), "links", ctx);
-      linksAnswered = artifact.status === 200;
-      if (artifact.status === 200) {
+      linksAnswered = artifact.status >= 200 && artifact.status < 300;
+      if (linksAnswered) {
         const doc = parseStrictJson(artifact.text, limits);
         published = ownJsonValue(ownJsonValue(doc, "networks"), parsed.networkName) || {};
         // The runtime accepts any JSON entry and spreads it before substitution.
