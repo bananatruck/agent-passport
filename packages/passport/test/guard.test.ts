@@ -256,6 +256,31 @@ describe("installPassportGuard", () => {
     expect(results.every((r) => r.ok)).toBe(true);
   });
 
+  it("releases the compile queue once the runtime has read the checked files, so an unanswered prompt cannot stall other partners", async () => {
+    serveJson(PEER, peerFiles("Answer ferry times."));
+    serveJson(OTHER, peerFiles("Answer ferry times."));
+    const cache = new Map<string, unknown>();
+    const fakeEngine = {
+      top: { base: CALLER, manifest: callerFiles["/agent-manifest.json"] },
+      registry: { get: (o: string, n: string) => cache.get(`${o}::${n}`), checkCycle: () => {} },
+      _assertAllowedPeer: () => {},
+      resolveRemote: async (ref: string, ..._rest: unknown[]) => {
+        const base = new URL("./", ref).href.replace(/\/$/, "");
+        for (const file of ["agent-manifest.json", "harbor_ferry.network.json", "links.json"]) await fetch(`${base}/${file}`);
+        // Like action discovery waiting on a visitor prompt that never gets an answer.
+        if (base === PEER) await new Promise(() => {});
+        return { ref };
+      },
+    };
+    guard = installPassportGuard(fakeEngine as unknown as Parameters<typeof installPassportGuard>[0], { pins: null, approveUnreviewed: async () => true });
+    void fakeEngine.resolveRemote(`${PEER}/harbor_ferry`, [], null, null);
+    const second = await Promise.race([
+      fakeEngine.resolveRemote(`${OTHER}/harbor_ferry`, [], null, null),
+      new Promise((r) => setTimeout(() => r("stalled"), 2000)),
+    ]);
+    expect(second).toEqual({ ref: `${OTHER}/harbor_ferry` });
+  });
+
   it("uninstall restores the runtime and fetch", async () => {
     const engine = await bootEngine();
     const original = engine.resolveRemote;
