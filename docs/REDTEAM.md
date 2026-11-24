@@ -1,6 +1,6 @@
 # Red-team review
 
-An adversarial review (Grok 4.7 high in Cursor) tried to make Agent Passport stamp a hostile or malformed partner network as verified or unreviewed, or make the card misstate what will run.
+An adversarial review tried to make Agent Passport stamp a hostile or malformed partner network as verified or unreviewed, or make the card misstate what will run.
 Every attack that worked was committed first as a failing test in `packages/passport/test/redteam.test.ts`, then fixed.
 
 ## Attacks that worked, and their fixes

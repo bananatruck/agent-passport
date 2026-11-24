@@ -1,4 +1,4 @@
-// Findings from the second outside review (GPT 6.1 Sol, round 2). Each test was written failing first.
+// Findings from the second outside review. Each test was written failing first.
 // The numbers match the review in the round-2 notes.
 import { describe, expect, it } from "vitest";
 import { createPin } from "../src/index.js";
