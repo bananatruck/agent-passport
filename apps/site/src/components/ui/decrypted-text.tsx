@@ -13,6 +13,7 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
+  type KeyboardEvent,
 } from "react";
 import { motion } from "motion/react";
 import type { HTMLMotionProps } from "motion/react";
@@ -680,7 +681,18 @@ export default function DecryptedText({
         onMouseLeave: handleMouseLeave,
       }
     : animateOn === "click"
-      ? { onClick: handleClick }
+      ? {
+          // Click mode is keyboard operable too: focusable, announced as a button, Enter or Space toggles.
+          onClick: handleClick,
+          role: "button",
+          tabIndex: 0,
+          onKeyDown: (event: KeyboardEvent<HTMLSpanElement>) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              handleClick();
+            }
+          },
+        }
       : {};
 
   return (
