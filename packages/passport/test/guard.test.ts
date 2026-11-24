@@ -365,6 +365,34 @@ describe("installPassportGuard", () => {
     expect(engine.registry.get(PEER, "harbor_ferry")).toBeUndefined();
   });
 
+  it("refuses a published link even after another partner resolved an allowed link to that origin", async () => {
+    const destination = "https://rooms.example/rooms";
+    const files = peerFiles("Answer ferry times.");
+    serveJson(PEER, {
+      ...files,
+      "/agent-manifest.json": { ...files["/agent-manifest.json"], allowed_peers: [destination] },
+      "/links.json": { networks: { harbor_ferry: { rooms: destination } } },
+    });
+    serveJson(OTHER, {
+      ...files,
+      "/agent-manifest.json": { ...files["/agent-manifest.json"], peer_policy: { mode: "closed" }, allowed_peers: [] },
+      "/harbor_ferry.network.json": {
+        tools: [{ ...files["/harbor_ferry.network.json"].tools[0], tools: ["rooms"] }],
+        link_slots: { rooms: {} },
+      },
+      "/links.json": { networks: { harbor_ferry: { rooms: destination } } },
+    });
+    const engine = await bootEngine();
+    engine.top.manifest.allowed_peers.push(OTHER);
+    guard = installPassportGuard(engine, { pins: null, parseHocon, approveUnreviewed: async () => true });
+    const first = await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    await engine.resolveLink("rooms", first.network, PEER, null);
+    expect(engine.runtimeAllowedPeers.has(new URL(destination).origin)).toBe(true);
+
+    await expect(engine.resolveRemote(`${OTHER}/harbor_ferry`, [], null, engine.top.manifest)).rejects.toThrow(/published link/);
+    expect(engine.registry.get(OTHER, "harbor_ferry")).toBeUndefined();
+  });
+
   it("keeps a published link that the partner's policy allows", async () => {
     const files = peerFiles("Answer ferry times.");
     serveJson(PEER, {
@@ -376,6 +404,64 @@ describe("installPassportGuard", () => {
     guard = installPassportGuard(engine, { pins: null, parseHocon, approveUnreviewed: async () => true });
     const session = await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
     expect(session.network.getLink("rooms")).toBe(`${OTHER}/rooms`);
+  });
+
+  it.each([
+    { kind: "network", cached: false },
+    { kind: "network", cached: true },
+    { kind: "MCP", cached: false },
+    { kind: "MCP", cached: true },
+  ])("checks each partner's policy before a $kind resolution, cached=$cached", async ({ kind, cached }) => {
+    const destination = "https://rooms.example";
+    const files = peerFiles("Answer ferry times.");
+    serveJson(PEER, {
+      ...files,
+      "/agent-manifest.json": { ...files["/agent-manifest.json"], allowed_peers: [destination] },
+      "/links.json": { networks: { harbor_ferry: { rooms: `${destination}/harbor_ferry` } } },
+    });
+    serveJson(OTHER, {
+      ...files,
+      "/agent-manifest.json": { ...files["/agent-manifest.json"], peer_policy: { mode: "closed" }, allowed_peers: [] },
+    });
+    serveJson(destination, files);
+    const engine = await bootEngine();
+    engine.top.manifest.allowed_peers.push(OTHER);
+    guard = installPassportGuard(engine, { pins: null, parseHocon, approveUnreviewed: async () => true });
+    const first = await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    await engine.resolveLink("rooms", first.network, PEER, null);
+    const second = await engine.resolveRemote(`${OTHER}/harbor_ferry`, [], null, engine.top.manifest);
+    const resolve = (manifest: unknown) => kind === "network"
+      ? engine.resolveRemote(`${destination}/harbor_ferry`, [], null, manifest)
+      : engine.resolveMcp(`${destination}/mcp`, null, {}, manifest);
+    if (cached) await resolve(first.manifest);
+    log.length = 0;
+
+    await expect(resolve(second.manifest)).rejects.toThrow(/allowed_peers/);
+    expect(log).toEqual([]);
+  });
+
+  it.each([
+    { peer_policy: { mode: "closed" }, allowed_peers: ["https://rooms.example/allowed"] },
+    { peer_policy: { mode: "open" }, allowed_peers: [] },
+    { web_policy: { mode: "open" }, allowed_peers: [] },
+  ])("keeps partner policy permissions for MCP calls: %j", async (policy) => {
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null });
+    const client = await engine.resolveMcp("https://rooms.example/mcp", null, {}, policy);
+    expect(client.url).toBe("https://rooms.example/mcp");
+  });
+
+  it("keeps the top site's visitor-approved link exceptions", async () => {
+    serveJson(CALLER, {
+      ...callerFiles,
+      "/trip_desk.network.json": { ...callerFiles["/trip_desk.network.json"], link_slots: { rooms: {} } },
+    });
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null });
+    engine.top.network.setLink("rooms", `${OTHER}/mcp`);
+    await engine.resolveLink("rooms", engine.top.network, CALLER, null);
+    const client = await engine.resolveMcp(`${OTHER}/mcp`, null, {}, engine.top.manifest);
+    expect(client.url).toBe(`${OTHER}/mcp`);
   });
 
   it("stops MCP redirects even for an endpoint that is not a REST target", async () => {

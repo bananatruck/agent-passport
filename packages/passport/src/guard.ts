@@ -17,7 +17,7 @@ import type { InspectOptions, PassportReport, PinFile } from "./types.js";
 
 /** The parts of the nsdeploy Engine the guard relies on (runtime commit in apps/site/public/runtime/UPSTREAM_COMMIT.txt). */
 export interface NsdeployEngine {
-  top: { base: string } | null;
+  top: { base: string; manifest?: unknown } | null;
   registry: {
     get(origin: string, agentName: string): unknown;
     checkCycle(chain: string[], origin: string, agentName: string): void;
@@ -232,6 +232,21 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   const loadPins = async (): Promise<PinFile | null> =>
     typeof options.pins === "function" ? await options.pins() : options.pins;
 
+  function assertPublishedPeer(target: string, manifest: unknown): void {
+    // Reuse the runtime's policy rules with an isolated receiver. Exceptions granted
+    // by resolving links in other networks cannot expand a partner's published policy.
+    const policyEngine = { ...engine, runtimeAllowedPeers: new Set<string>() };
+    engine._assertAllowedPeer.call(policyEngine, target, manifest);
+  }
+
+  function assertCallerAllowedPeer(target: string, sourceManifest: unknown): void {
+    if (!sourceManifest || sourceManifest === engine.top?.manifest) {
+      engine._assertAllowedPeer(target, sourceManifest);
+    } else {
+      assertPublishedPeer(target, sourceManifest);
+    }
+  }
+
   async function guardedResolveRemote(
     this: NsdeployEngine,
     ref: string,
@@ -244,7 +259,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     // and nothing is fetched for a partner the caller's policy does not allow.
     const target = new URL(ref, `${engine.top.base}/`);
     const origin = new URL("./", target).href.replace(/\/$/, "");
-    engine._assertAllowedPeer(origin, sourceManifest);
+    assertCallerAllowedPeer(origin, sourceManifest);
     const lastSeg = target.pathname.split("/").filter(Boolean).pop() ?? "";
     engine.registry.checkCycle(chain, origin, lastSeg);
     const cached = engine.registry.get(origin, lastSeg);
@@ -284,7 +299,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     const partnerManifest: unknown = JSON.parse(manifest!.text);
     for (const target of Object.values(report.network?.links ?? {})) {
       if (!target) continue;
-      try { engine._assertAllowedPeer(target, partnerManifest); }
+      try { assertPublishedPeer(target, partnerManifest); }
       catch { block("a published link targets a destination outside its allowed_peers policy."); }
     }
     if (options.parseHocon) {
@@ -368,6 +383,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     sourceManifest: unknown,
   ): Promise<unknown> {
     const url = mcpTarget(ref);
+    assertCallerAllowedPeer(url, sourceManifest);
     const headers = mcpHeaders(slyData, url);
     if (Object.keys(headers).length && new URL(url).protocol === "http:") {
       throw new TypeError(`Agent Passport: refuse to send MCP credentials over HTTP; use HTTPS for ${url}.`);
