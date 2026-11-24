@@ -506,6 +506,43 @@ describe("installPassportGuard", () => {
     expect(second).not.toBe(first);
   });
 
+  it.each([false, true])("discards MCP credentials from before guard installation, reinstall=%s", async (reinstall) => {
+    const endpoint = "https://mcp.example/mcp";
+    const engine = await bootEngine();
+    engine.top.manifest.allowed_peers.push(endpoint);
+    const sent: Headers[] = [];
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) !== endpoint) return inner(input, init);
+      sent.push(new Headers(init?.headers));
+      const rpc = JSON.parse(String(init?.body));
+      return Response.json({ jsonrpc: "2.0", id: rpc.id, result: rpc.method === "tools/list" ? { tools: [] } : {} }, { headers: { "Mcp-Session-Id": "earlier-session" } });
+    };
+    if (reinstall) guard = installPassportGuard(engine, { pins: null });
+    const authenticated = await engine.resolveMcp(endpoint, null, { http_headers: { [endpoint]: { Authorization: "test-only-placeholder" } } }, engine.top.manifest);
+    await authenticated.listTools();
+    expect(sent.some((headers) => headers.has("authorization"))).toBe(true);
+    guard?.uninstall();
+    guard = installPassportGuard(engine, { pins: null });
+    sent.length = 0;
+
+    const anonymous = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    await anonymous.listTools();
+    expect(sent.map((headers) => headers.get("authorization"))).toEqual([null, null, null]);
+    expect(sent[0]?.get("mcp-session-id")).toBeNull();
+    expect(anonymous).not.toBe(authenticated);
+  });
+
+  it.each([{}, { Authorization: "test-only-placeholder" }])("reuses a known MCP client only with matching headers: %j", async (headers) => {
+    const endpoint = "https://mcp.example/mcp";
+    const engine = await bootEngine();
+    engine.top.manifest.allowed_peers.push(endpoint);
+    guard = installPassportGuard(engine, { pins: null });
+    const first = await engine.resolveMcp(endpoint, null, { http_headers: { [endpoint]: headers } }, engine.top.manifest);
+    const second = await engine.resolveMcp({ url: endpoint }, null, { http_headers: { [endpoint]: { ...headers } } }, engine.top.manifest);
+    expect(second).toBe(first);
+  });
+
   it("refuses configured MCP authentication over HTTP before sending any request", async () => {
     const engine = await bootEngine();
     const endpoint = `${PEER}/mcp`;

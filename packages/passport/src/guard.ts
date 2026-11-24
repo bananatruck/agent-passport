@@ -390,7 +390,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     }
     const credKey = mcpCredentialKey(headers);
     const previous = mcpCredentialFingerprint.get(url);
-    if (previous !== undefined && previous !== credKey) engine._mcpClients?.delete(url);
+    if (previous !== credKey) engine._mcpClients?.delete(url);
     mcpCredentialFingerprint.set(url, credKey);
     return originalResolveMcp.call(engine, ref, parentSpan, slyData, sourceManifest);
   }
