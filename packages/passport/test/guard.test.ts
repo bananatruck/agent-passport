@@ -458,8 +458,10 @@ describe("installPassportGuard", () => {
     });
     const engine = await bootEngine();
     guard = installPassportGuard(engine, { pins: null });
-    engine.top.network.setLink("rooms", `${OTHER}/mcp`);
-    await engine.resolveLink("rooms", engine.top.network, CALLER, null);
+    const network = engine.top.network;
+    if (!network) throw new Error("The runtime did not compile its own network.");
+    network.setLink("rooms", `${OTHER}/mcp`);
+    await engine.resolveLink("rooms", network, CALLER, null);
     const client = await engine.resolveMcp(`${OTHER}/mcp`, null, {}, engine.top.manifest);
     expect(client.url).toBe(`${OTHER}/mcp`);
   });
