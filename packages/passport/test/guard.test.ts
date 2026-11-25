@@ -605,7 +605,7 @@ describe("installPassportGuard", () => {
     routes.set(`${PEER}/harbor_ferry.network.json`, () => ({ status: 200, body: JSON.stringify(peerFiles(++n === 1 ? "First definition." : "Second definition.")["/harbor_ferry.network.json"]) }));
     const engine = await bootEngine();
     const approved = new Map<string, string>();
-    const refs = [`${PEER}/harbor_ferry?caller=first`, `${PEER}/harbor_ferry?caller=second`];
+    const refs = [`${PEER}/harbor_ferry`, `${PEER}/./harbor_ferry`];
     guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async (report, context) => { approved.set(context.ref, report.network!.agents[0]!.instructions); return true; } });
     const sessions = await Promise.all(refs.map(ref => engine.resolveRemote(ref, [], null, engine.top.manifest)));
     // Approval callbacks may finish in either order. Match each result to its caller.
