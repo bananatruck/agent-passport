@@ -118,7 +118,7 @@ export async function inspectPeer(input: string, options: InspectOptions = {}): 
     const effective = effectiveConfig(definition, published);
     report.network = await summarizeNetwork(effective, manifest, entry, { siteBase: parsed.siteBase, origin: parsed.origin, name: parsed.networkName, checks: report.checks });
     if (!report.checks.some(c => c.status === "fail")) pass(stage, "Network structure checked", "Agent names, references, front agent and executable declarations passed structural checks.");
-    report.checks.push(...mergeHiddenText([...hiddenTextChecks(manifest, "manifest"), ...hiddenTextChecks(definition, "raw definition"), ...hiddenTextChecks(effective.tools, "effective agents")]), ...instructionSignals(report.network.agents));
+    report.checks.push(...mergeHiddenText([...hiddenTextChecks(manifest, "manifest"), ...hiddenTextChecks(definition, "raw definition"), ...hiddenTextChecks(effective.tools, "effective agents"), ...hiddenTextChecks(published, "published links"), ...hiddenTextChecks(effective.links, "effective links")]), ...instructionSignals(report.network.agents));
     stage = "digests";
     // The brand is shown as the card heading, so a change to it must break the pin too.
     const manifestEntry = await sha256Hex(canonicalJson({
