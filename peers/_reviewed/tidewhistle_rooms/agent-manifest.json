@@ -1,0 +1,55 @@
+{
+  "brand": "Tidewhistle Rooms",
+  "networks": [
+    {
+      "name": "tidewhistle_rooms",
+      "front_man": "rooms_desk",
+      "hocon": "./tidewhistle_rooms.network.json",
+      "description": "A guesthouse on Gull Island: rooms, prices and how to book.",
+      "tags": [
+        "agentified-website",
+        "agent-passport-fixture"
+      ],
+      "sample_queries": [
+        "Is there a double room on Gull Island on Saturday?"
+      ]
+    }
+  ],
+  "llm_router": {
+    "base_url": "https://api.otari.ai/api/v1",
+    "mock": false,
+    "byok_router": "https://api.otari.ai/api/v1"
+  },
+  "allowed_peers": [],
+  "peer_policy": {
+    "mode": "closed",
+    "deny_origins": [],
+    "note": "This partner calls no other sites."
+  },
+  "linking": {
+    "protocol": "nsdeploy-link/v1",
+    "exports": [
+      {
+        "network": "tidewhistle_rooms",
+        "front_man": "rooms_desk",
+        "aliases": [
+          "tidewhistle_rooms",
+          "rooms_desk"
+        ],
+        "url": "tidewhistle_rooms"
+      }
+    ],
+    "imports": [],
+    "link_updates": {
+      "mode": "browser-local"
+    }
+  },
+  "deployment": {
+    "mode": "static",
+    "self_contained_runtime": false,
+    "browser_mock": false,
+    "direct_byok": true,
+    "direct_mcp_requires_cors": true,
+    "public_mcp_facade": false
+  }
+}

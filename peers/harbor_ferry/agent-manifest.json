@@ -1,0 +1,55 @@
+{
+  "brand": "Harbor Ferry",
+  "networks": [
+    {
+      "name": "harbor_ferry",
+      "front_man": "ferry_desk",
+      "hocon": "./harbor_ferry.network.json",
+      "description": "Crossings from Tidewater Quay to Gull Island: times and fares.",
+      "tags": [
+        "agentified-website",
+        "agent-passport-fixture"
+      ],
+      "sample_queries": [
+        "When is the first ferry to Gull Island on Saturday?"
+      ]
+    }
+  ],
+  "llm_router": {
+    "base_url": "https://api.otari.ai/api/v1",
+    "mock": false,
+    "byok_router": "https://api.otari.ai/api/v1"
+  },
+  "allowed_peers": [],
+  "peer_policy": {
+    "mode": "closed",
+    "deny_origins": [],
+    "note": "This partner calls no other sites."
+  },
+  "linking": {
+    "protocol": "nsdeploy-link/v1",
+    "exports": [
+      {
+        "network": "harbor_ferry",
+        "front_man": "ferry_desk",
+        "aliases": [
+          "harbor_ferry",
+          "ferry_desk"
+        ],
+        "url": "harbor_ferry"
+      }
+    ],
+    "imports": [],
+    "link_updates": {
+      "mode": "browser-local"
+    }
+  },
+  "deployment": {
+    "mode": "static",
+    "self_contained_runtime": false,
+    "browser_mock": false,
+    "direct_byok": true,
+    "direct_mcp_requires_cors": true,
+    "public_mcp_facade": false
+  }
+}

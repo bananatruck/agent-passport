@@ -1,0 +1,113 @@
+#!/usr/bin/env node
+import { readFile, writeFile, rename, rm } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const usage = {
+  inspect: "inspect <url> [--json]\nInspect a peer without loading it. Exit 1 for refused or changed peers.\nExamples:\n  agent-passport inspect https://peer.example/agents/transit\n  agent-passport inspect http://127.0.0.1:8080/transit --json",
+  pin: "pin <url> --file <path> [--label <text>] [--reviewed-by <text>] [--note <text>]\nCreate or replace a reviewed pin. Refused peers cannot be pinned.\nExamples:\n  agent-passport pin https://peer.example/agents/transit --file passports.json --label Transit\n  agent-passport pin https://peer.example/agents/transit --file passports.json --reviewed-by Publisher --note Reviewed",
+  check: "check --file <path> [--network <url> ...] [--json]\nInspect every pinned peer, or only the pinned peers named with --network (repeatable). Exit 0 only when every checked peer is verified.\nExamples:\n  agent-passport check --file passports.json\n  agent-passport check --file passports.json --network https://peer.example/agents/transit --json",
+};
+
+/** Human-readable lines for one report: verdict, summary, failed and flagged checks, changes. */
+function describe(report, fallback) {
+  const lines = [`${report.verdict} ${report.networkUrl ?? fallback}: ${report.summary}`];
+  for (const c of report.checks) {
+    if (c.status === "fail") lines.push(`  x ${c.title}: ${c.detail}`);
+    else if (c.status === "warn") lines.push(`  ! ${c.title}: ${c.detail}`);
+  }
+  for (const change of report.pin.changes) lines.push(`  ~ ${change.kind}: ${change.detail}`);
+  return lines.join("\n") + "\n";
+}
+
+/**
+ * Exercise command behaviour with the real core and local files.
+ * @param {string[]} argv
+ * @param {{ api?: typeof import("../src/index.js"), stdout?: (text: string) => void, stderr?: (text: string) => void }} [options]
+ */
+export async function runCli(argv, { api, stdout = text => process.stdout.write(text), stderr = text => process.stderr.write(text) } = {}) {
+  const [command, ...args] = argv;
+  if (!command || command === "--help" || command === "-h") {
+    stdout("Usage: agent-passport <inspect|pin|check>\nUse <command> --help for options.\nExamples:\n  agent-passport inspect https://peer.example/transit\n  agent-passport check --file passports.json\n");
+    return 0;
+  }
+  if (!Object.hasOwn(usage, command)) { stderr(`Unknown command ${command}. Use agent-passport --help.\n`); return 1; }
+  if (args.includes("--help") || args.includes("-h")) { stdout(`Usage: agent-passport ${usage[command]}\n`); return 0; }
+  try {
+    const flags = new Map();
+    const positional = [];
+    const networks = [];
+    const allowed = command === "pin" ? ["--file", "--label", "--reviewed-by", "--note"] : command === "check" ? ["--file", "--json", "--network"] : ["--json"];
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (!arg.startsWith("-")) { positional.push(arg); continue; }
+      if (!allowed.includes(arg)) throw new Error(`Unknown option ${arg}.`);
+      if (arg === "--network") {
+        const value = args[++i];
+        if (value === undefined || value.startsWith("--")) throw new Error("Missing value for --network.");
+        networks.push(value);
+        continue;
+      }
+      if (flags.has(arg)) throw new Error(`Repeated option ${arg}.`);
+      if (arg === "--json") { flags.set(arg, true); continue; }
+      const value = args[++i];
+      if (value === undefined || value.startsWith("--")) throw new Error(`Missing value for ${arg}.`);
+      flags.set(arg, value);
+    }
+    if (positional.length !== (command === "check" ? 0 : 1)) throw new Error(command === "check" ? "check takes no URL argument." : "Supply exactly one peer URL.");
+    const file = flags.get("--file");
+    if (command !== "inspect" && !file) throw new Error("Missing required --file <path>.");
+    const core = api ?? await import("../dist/index.js");
+    if (command === "inspect") {
+      const report = await core.inspectPeer(positional[0]);
+      stdout(flags.has("--json") ? JSON.stringify(report, null, 2) + "\n" : describe(report, positional[0]));
+      return report.verdict === "refused" || report.verdict === "changed" ? 1 : 0;
+    }
+    let pins;
+    try { pins = core.parsePinFile(await readFile(file, "utf8")); }
+    catch (error) {
+      if (command === "pin" && error?.code === "ENOENT") pins = { version: 1, pins: [] };
+      else throw error;
+    }
+    if (command === "pin") {
+      const report = await core.inspectPeer(positional[0]);
+      if (report.verdict === "refused") throw new Error(`Refusing to pin ${positional[0]}: ${report.checks.filter(c => c.status === "fail").map(c => `${c.code}: ${c.detail}`).join("; ")}`);
+      const pin = core.createPin(report, { label: flags.get("--label"), reviewedBy: flags.get("--reviewed-by"), note: flags.get("--note") });
+      const previous = core.findPin(pins, pin.network);
+      pins.pins = pins.pins.filter(p => p !== previous);
+      pins.pins.push(pin);
+      const temporary = join(dirname(file), `.${basename(file)}.${randomUUID()}.tmp`);
+      try {
+        await writeFile(temporary, core.serializePinFile(pins), { encoding: "utf8", flag: "wx", mode: 0o600 });
+        await rename(temporary, file);
+      } finally {
+        await rm(temporary, { force: true });
+      }
+      stdout(`Pinned ${pin.network} in ${file}\n`);
+      return 0;
+    }
+    const selected = networks.length
+      ? networks.map((url) => {
+          const pin = core.findPin(pins, url);
+          if (!pin) throw new Error(`${url} is not pinned in ${file}.`);
+          return pin;
+        })
+      : pins.pins;
+    const reports = [];
+    for (const pin of selected) reports.push(await core.inspectPeer(pin.network, { pins }));
+    stdout(flags.has("--json") ? JSON.stringify(reports, null, 2) + "\n" : reports.map(r => describe(r, r.input)).join(""));
+    return reports.every(r => r.verdict === "verified") ? 0 : 1;
+  } catch (error) {
+    stderr(`${error instanceof Error ? error.message : String(error)}\nUsage: agent-passport ${usage[command]}\n`);
+    return 1;
+  }
+}
+
+// Compare real paths: an installed bin is a symlink, and import.meta.url names its target.
+function isMain() {
+  try { return !!process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); }
+  catch { return false; }
+}
+if (isMain()) process.exitCode = await runCli(process.argv.slice(2));

@@ -8,3 +8,5 @@ coverage/
 reference/
 .playwright/
 test-results/
+apps/site/public/vendor/
+submission/

@@ -1,0 +1,27 @@
+{
+  "environment": "pages",
+  "partners": [
+    {
+      "id": "harbor_ferry",
+      "label": "Harbor Ferry",
+      "url": "https://raw.githubusercontent.com/bananatruck/agent-passport/main/peers/harbor_ferry/harbor_ferry",
+      "expected": "verified",
+      "note": "Well formed, and pinned by this site's publisher."
+    },
+    {
+      "id": "tidewhistle_rooms",
+      "label": "Tidewhistle Rooms",
+      "url": "https://raw.githubusercontent.com/bananatruck/agent-passport/main/peers/tidewhistle_rooms/tidewhistle_rooms",
+      "expected": "changed",
+      "note": "Pinned, then changed by its publisher to ask for card details."
+    },
+    {
+      "id": "gull_deals",
+      "label": "Gull Deals",
+      "url": "https://raw.githubusercontent.com/bananatruck/agent-passport/main/peers/gull_deals/gull_deals",
+      "expected": "refused",
+      "note": "Hidden instructions, a different front agent than declared, and a duplicate agent."
+    }
+  ],
+  "hazards": []
+}

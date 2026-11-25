@@ -43,9 +43,9 @@ The demo site is itself a conforming agentic website: its own trip-desk agent ne
 
 Agent Passport never says a network is safe.
 It says one of four things, and each one has an exact meaning:
-`verified`: the network was fetched from the requested origin without redirects, passed every structural check, and its effective content is byte-for-byte the content the caller site's publisher pinned on the stated date.
-`unreviewed`: the network passed every structural check, but the caller site's publisher has not pinned it, so the visitor sees the full card and must approve loading explicitly.
-`changed`: the network passed the structural checks, but its effective content differs from the pin; the card lists what changed and the guard refuses to load it by default.
+`verified`: the network was fetched from the requested origin without redirects, no check failed (warnings may be listed), and the SHA-256 digests of its effective content (canonical JSON after the runtime's substitutions) equal the ones the caller site's publisher pinned on the stated date.
+`unreviewed`: no check failed, but the caller site's publisher has not pinned it, so the visitor sees the full card and must approve loading explicitly.
+`changed`: no check failed, but its effective content differs from the pin; the card lists what changed and the guard refuses to load it by default.
 `refused`: a fetch, size, format, structure or hidden-text check failed, so the network cannot load at all.
 
 ### 4.2 Verified by Agent Passport
@@ -58,21 +58,21 @@ Each artifact has a byte limit enforced while streaming (manifest 256 KiB, defin
 Bodies must be valid UTF-8 and strict JSON, with no duplicate keys at any depth, nesting at most 64 levels and at most 20,000 keys in total.
 The manifest has a `networks` entry whose `name` exactly equals the requested network name, with string `front_man` and `hocon` values; no other entry is ever selected.
 The definition URL is resolved against the site base; a definition on a different origin is a new destination that needs its own consent before it is fetched.
-The definition has a non-empty `tools` array, every agent has a non-empty unique name after trimming, every tool reference resolves to an internal agent, an HTTP(S) or `/`-prefixed external network, an MCP reference, or a declared link slot, and the runtime's derived front agent equals the manifest's `front_man`.
-An agent with `class` or `toolbox` is an executable definition: it is refused unless the manifest declares a `coded_tools` bundle, and the card says whether that bundle has an SRI digest.
-Effective instructions are computed with the same `{token}` substitution the runtime applies, and those are the texts that are hashed, diffed and shown.
-Instructions, descriptions and names that contain bidirectional override characters or Unicode tag characters (the "ASCII smuggling" block U+E0000 to U+E007F) are refused, and the hidden text is decoded and shown.
+The definition has a non-empty `tools` array, every agent has a non-empty unique name after trimming, every tool reference is classifiable as an internal agent, an HTTP(S) or `/`-prefixed external network, an MCP reference, or a declared link slot, and the runtime's derived front agent equals the manifest's `front_man`.
+An agent with a `class` key is an executable definition: it is refused unless the manifest declares a `coded_tools` bundle, and the card warns when that bundle has no SRI digest. An agent the runtime treats as a REST `toolbox` (falsy `class`, truthy `toolbox`) is refused unless its `args.url` is on the partner's own origin and its method is a string; the bundle itself is fetched later by the runtime and is not checked by Agent Passport.
+Effective instructions are the trimmed `instructions` and `command` of each agent after the same `{token}` substitution the runtime applies; those are the texts that are hashed, diffed and shown. The runtime may add its own text (a default prompt for an agent with none, and CRUSE rendering rules when the network turns CRUSE on); that text comes from the runtime, not the partner, and the card notes it separately.
+Any string in the manifest or the definition (including names, descriptions, the brand and instructions) that contains bidirectional control characters or Unicode tag characters (the "ASCII smuggling" block U+E0000 to U+E007F) are refused, and the hidden text is decoded and shown.
 The digests are SHA-256 over the canonical JSON of the selected manifest entry plus `coded_tools`, over the canonical JSON of the effective definition, and over the canonical JSON of the peer's `links.json` entry for that network, because the runtime merges that file into the network.
 In the runtime guard, the runtime compiles exactly the bytes Agent Passport verified (no second fetch), and the guard checks that the runtime's HOCON parser reads those bytes as the same value JSON.parse does.
 
 ### 4.3 Enforced by the runtime, not by Agent Passport
 
-The vendored reference runtime runs a peer on the caller's router and model, never sends the visitor's key to the peer, applies the caller's step limit, filters private context (`sly_data`) through the caller's allow rules, and checks `allowed_peers` per hop.
+The vendored reference runtime runs a peer on the caller's router and model, never sends the visitor's key to the peer, applies the caller's step limit on its built-in runner (its optional LangChain runner does not, and static sites such as this demo never use that runner), filters private context (`sly_data`) through the caller's allow rules, and checks `allowed_peers` per hop.
 The card reports these as runtime guarantees and names the runtime version, and it never presents them as something Agent Passport checked.
 
 ### 4.4 Declared by the publisher, not verified
 
-The peer's brand, descriptions, `llm_router`, `peer_policy`, tags and sample queries are shown as claims.
+The peer's brand and description are shown, and its `llm_router` and `peer_policy` are recorded, as claims only; tags and sample queries are not displayed.
 Who operates the peer's domain is not verified: an origin is not a legal identity.
 
 ### 4.5 Signals, not proof
@@ -96,10 +96,10 @@ function comparePin(report: PassportReport, pin: PinEntry): { status: "match" | 
 function findPin(pins: PinFile | null | undefined, networkUrl: string): PinEntry | null;
 function parsePinFile(text: string): PinFile; // validates shape, throws PassportError on bad input
 function installPassportGuard(engine: NsdeployEngine, options: GuardOptions): GuardHandle;
-// <agent-passport-card> custom element: set .report, listens for no input, emits "passport-decision" with detail { decision: "load" | "decline" }.
+// <agent-passport-card> custom element: set .report (and optionally .decide = true); in decide mode it emits "passport-decision" with detail { decision: "load" | "decline" }.
 ```
 
-`InspectOptions` has `fetch` (injectable), `pins`, `limits`, `allowLoopbackHttp` (default true), `confirmDestination(origin, purpose)` for any extra origin such as a cross-origin definition (default: refuse), and `now`.
+`InspectOptions` has `fetch` (injectable), `pins`, `limits`, `allowLoopbackHttp` (default true), `confirmDestination({ origin, url, purpose })` for any extra origin such as a cross-origin definition (default: refuse), and `now`.
 `PassportReport` has `verdict`, a one-sentence `summary`, `checks` (each with `id`, `status` pass, fail, warn or info, `category` verified, runtime, declared, signal or not-checked, `title`, `detail`), the parsed `network` summary (agents with effective instructions and their digests, tool references, every origin the network may contact, private-context allow rules, coded tools), `artifacts` (URL, origin, byte length, digest), `digest`, and `pin` (`status` match, mismatch or none, plus `changes`).
 `PinFile` is `{ "version": 1, "pins": PinEntry[] }`, and a `PinEntry` stores the network URL, label, review date, reviewer, digests and a small snapshot (front agent, per-agent instruction digests and tool lists, origins, allow rules) so a later mismatch can be explained without storing the old text.
 Errors carry stable codes such as `URL_INVALID`, `HTTPS_REQUIRED`, `REDIRECT_REFUSED`, `TOO_LARGE`, `TIMEOUT`, `NOT_JSON`, `DUPLICATE_KEY`, `NO_SUCH_NETWORK`, `FRONT_MAN_MISMATCH`, `DUPLICATE_AGENT`, `MISSING_TOOL`, `UNDECLARED_CODE`, `HIDDEN_TEXT`, `DESTINATION_DECLINED`.
@@ -121,6 +121,6 @@ Demo flow for the video: ask the trip desk to plan a day trip, approve contact w
 Unit tests (Vitest, Node) cover URL derivation, every fetch rule against a local HTTP server (redirect same-origin and cross-origin, 404, HTML content type, oversized with and without Content-Length, endless stream, timeout, invalid UTF-8, BOM), strict JSON (duplicate keys at depth, depth and key limits, `__proto__` keys not polluting), manifest selection (exact name only, near-miss names refused), definition structure (missing tools, duplicate and whitespace-colliding names, front-agent mismatch, missing references, link slots, external and MCP references, undeclared code), effective-instruction substitution, hidden-text detection and decoding, digests (stable under key order, changed by any effective change, changed by links.json), pins (create, match, every change kind), the verdict table, and the CLI exit codes.
 Guard tests run the vendored runtime's `Engine` in Node with a fake fetch and prove that a refused or changed peer never compiles, that a verified peer compiles from the verified bytes even if the server changes between the check and the compile, and that a declined consent sends no request at all.
 Rendering tests check that the card writes peer text with `textContent` only, so markup in a peer's names or instructions is shown as text.
-An adversarial review (Cursor, grok-4.7-high) tries to make the card say `verified` for a malicious or malformed manifest; every finding becomes a failing test first.
+An adversarial review tries to make the card say `verified` for a malicious or malformed manifest; every finding becomes a failing test first.
 Browser checks run in Playwright's bundled Chromium at 1440 by 900 and 390 by 844, through the whole demo flow, with screenshots saved to `docs/screenshots/`.
 Lint (ESLint), type-check (`tsc --noEmit`), tests and the production build must all pass before any push.

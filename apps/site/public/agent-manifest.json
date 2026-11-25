@@ -1,0 +1,79 @@
+{
+  "brand": "Tidewater Trip Desk",
+  "networks": [
+    {
+      "name": "trip_desk",
+      "front_man": "trip_desk",
+      "hocon": "./trip_desk.network.json",
+      "description": "Plan a day on Gull Island. The desk asks partner sites for ferry times and rooms, and Agent Passport checks each partner before its agents run in your browser.",
+      "tags": [
+        "agentified-website",
+        "agent-passport",
+        "trust"
+      ],
+      "sample_queries": [
+        "Plan a Saturday on Gull Island for two: ferry times and a room.",
+        "Which partners did Agent Passport refuse, and why?",
+        "Any deals for Saturday?"
+      ]
+    }
+  ],
+  "llm_router": {
+    "base_url": "browser://mock",
+    "mock": true,
+    "byok_router": "https://api.otari.ai/api/v1"
+  },
+  "allowed_peers": [
+    "https://raw.githubusercontent.com"
+  ],
+  "peer_policy": {
+    "mode": "closed",
+    "deny_origins": [],
+    "note": "Calls only the three partner networks named in trip_desk.network.json, after the visitor agrees and Agent Passport has checked each one against passports.json."
+  },
+  "agent_mcp": {
+    "protocol": "nsdeploy-agent-mcp/v1",
+    "network": "trip_desk",
+    "front_man": "trip_desk",
+    "available": false,
+    "reason": "This is a static bundle; a public MCP facade requires an application host."
+  },
+  "theme": {
+    "primary": "#0E2A3B"
+  },
+  "linking": {
+    "protocol": "nsdeploy-link/v1",
+    "exports": [
+      {
+        "network": "trip_desk",
+        "front_man": "trip_desk",
+        "aliases": [
+          "trip_desk",
+          "tidewater_trip_desk"
+        ],
+        "url": "trip_desk"
+      }
+    ],
+    "imports": [],
+    "link_updates": {
+      "mode": "browser-local"
+    }
+  },
+  "deployment": {
+    "mode": "static",
+    "self_contained_runtime": true,
+    "browser_mock": true,
+    "direct_byok": true,
+    "direct_mcp_requires_cors": true,
+    "public_mcp_facade": false
+  },
+  "actions": {
+    "version": 1,
+    "module": "./site-actions.js",
+    "bridge": "./bridge/action-bridge.html",
+    "agentTools": [
+      "get_partner_passports",
+      "open_passport"
+    ]
+  }
+}

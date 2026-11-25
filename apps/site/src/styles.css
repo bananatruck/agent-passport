@@ -1,0 +1,153 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light dark;
+  --ap-ink: #0E2A3B;
+  --ap-paper: #E9F1EE;
+  --ap-bg: #F3F6F5;
+  --ap-guilloche: #9DC3B8;
+  --ap-verified: #1F7A4D;
+  --ap-changed: #A86A12;
+  --ap-refused: #B42318;
+  --ap-unreviewed: #2F4F9E;
+  --ap-text: #14212B;
+
+  --font-display: "Big Shoulders Display", "Impact", "Arial Narrow", system-ui, sans-serif;
+  --font-sans: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ap-ink: #071722;
+    --ap-paper: #112634;
+    --ap-bg: #0A1822;
+    --ap-guilloche: #355E58;
+    --ap-verified: #36A66E;
+    --ap-changed: #E09B38;
+    --ap-refused: #E8584C;
+    --ap-unreviewed: #6A8CE5;
+    --ap-text: #E9F1EE;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background-color: var(--ap-bg);
+  color: var(--ap-text);
+  font-family: var(--font-sans);
+  line-height: 1.55;
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--ap-bg);
+  color: var(--ap-text);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
+}
+
+.font-sans {
+  font-family: var(--font-sans);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Visible keyboard focus across all interactive elements */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--ap-unreviewed);
+  outline-offset: 2px;
+}
+
+/* Single orchestrated motion: rubber stamp presses onto the hero passport page once */
+@keyframes ap-stamp-press {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) scale(1.24) rotate(-6deg);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(1px) scale(0.97) rotate(-4deg);
+  }
+  100% {
+    opacity: 0.94;
+    transform: translateY(0) scale(1) rotate(-4deg);
+  }
+}
+
+.ap-rubber-stamp-once {
+  transform: rotate(-4deg);
+  opacity: 0.94;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ap-rubber-stamp-once {
+    animation: ap-stamp-press 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.18s 1 both;
+  }
+}
+
+@keyframes shine {
+  0% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 100%;
+  }
+  100% {
+    background-position: 0% 0%;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .motion-safe\:animate-shine {
+    animation: shine var(--duration, 14s) infinite linear;
+  }
+}
+
+/* Agent Passport card fonts follow the page's fonts. */
+:root {
+  --ap-font-display: var(--font-display);
+  --ap-font-body: var(--font-sans);
+  --ap-font-mono: var(--font-mono);
+}
+
+/* The reference runtime's chat is themed through its --ns-* custom properties, without editing it. */
+.desk-runtime {
+  --ns-primary: var(--ap-ink);
+  --ns-accent: var(--ap-unreviewed);
+  --ns-bg: var(--ap-bg);
+  --ns-fg: var(--ap-text);
+  --ns-muted: color-mix(in srgb, var(--ap-text) 60%, transparent);
+  --ns-border: var(--ap-guilloche);
+  --ns-panelbg: var(--ap-paper);
+  --ns-font: var(--font-sans);
+  --ns-railw: 230px;
+  min-width: 0;
+}
