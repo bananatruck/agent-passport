@@ -577,6 +577,23 @@ describe("installPassportGuard", () => {
     expect(log.filter((u) => u === `${PEER}/harbor_ferry.network.json`)).toHaveLength(1);
   });
 
+  it.each(["init", "request", "override"])("refuses REST bearer headers over HTTP from %s", async kind => {
+    const files = peerFiles("Answer ferry times.");
+    const endpoint = `${PEER}/api/times`;
+    serveJson(PEER, { ...files, "/harbor_ferry.network.json": { tools: [files["/harbor_ferry.network.json"].tools[0], { name: "times", toolbox: "requests_get", args: { url: endpoint } }] } });
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async () => true });
+    await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    log.length = 0;
+    const headers = { Authorization: "Bearer test-only-placeholder" };
+    const input = kind === "init" ? endpoint : new Request(endpoint, { headers });
+    const init = kind === "request" ? undefined : { headers: new Headers(headers) };
+    await expect(fetch(input, init)).rejects.toThrow(/HTTPS/);
+    expect(log).toEqual([]);
+    await fetch(new Request(endpoint, { headers }), { headers: {} });
+    expect(log).toEqual([endpoint]);
+  });
+
   it("uninstall restores the runtime and fetch", async () => {
     const engine = await bootEngine();
     const original = engine.resolveRemote;

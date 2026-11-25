@@ -209,6 +209,10 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
       const withoutQuery = url.split(/[?#]/)[0]!;
       // One endpoint may serve both tools, so REST redirect refusal must retain MCP bounds.
       if (restTargets.has(url)) {
+        const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+        if (new URL(url).protocol === "http:" && headers.has("authorization")) {
+          throw new TypeError(`Agent Passport: refuse to send REST credentials over HTTP; use HTTPS for ${url}.`);
+        }
         const restInit: RequestInit = { ...init, redirect: "error" };
         return mcpEndpoints.has(withoutQuery) ? boundedMcpFetch(input, restInit, withoutQuery) : realFetch(input as RequestInfo, restInit);
       }
