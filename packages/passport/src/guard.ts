@@ -71,7 +71,7 @@ export interface GuardOptions {
 export interface GuardHandle {
   /** Latest report per normalized network URL. */
   readonly reports: Map<string, PassportReport>;
-  /** Restore the runtime's original resolveRemote and fetch. */
+  /** Restore the runtime's original methods and fetch. */
   uninstall(): void;
 }
 
@@ -140,7 +140,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   const originalSubmitActions = engine.submitActions;
   const topAllowedPeers = new Set(engine.runtimeAllowedPeers);
   const manifestBases = new Map<unknown, string>();
-  const wrappedMcpClients = new WeakSet<object>();
+  const wrappedMcpClients = new Map<object, () => void>();
   const trace = engine.trace;
   const originalTraceExport = trace?.export;
   let omittedEvents = 0;
@@ -478,14 +478,18 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     const client = await originalResolveMcp.call(engine, ref, parentSpan, slyData, sourceManifest);
     if (client && typeof client === "object" && "callTool" in client && typeof client.callTool === "function" && !wrappedMcpClients.has(client)) {
       const callTool = client.callTool;
-      client.callTool = async (tool: string, args: unknown, span: unknown) => {
+      const guardedCallTool = async (tool: string, args: unknown, span: unknown) => {
         // Serialize once before awaiting approval, so later mutations cannot change the payload.
         const payload: unknown = JSON.parse(JSON.stringify(args ?? {}));
         const approved = await options.approveMcpCall?.({ url, tool, arguments: structuredClone(payload) });
         if (!approved) throw new TypeError("Agent Passport: the complete MCP payload was not approved.");
         return Reflect.apply(callTool, client, [tool, payload, span]);
       };
-      wrappedMcpClients.add(client);
+      client.callTool = guardedCallTool;
+      // Restore even evicted clients that a caller still holds, but preserve later wrappers.
+      wrappedMcpClients.set(client, () => {
+        if (client.callTool === guardedCallTool) client.callTool = callTool;
+      });
     }
     return client;
   }
@@ -510,6 +514,8 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   return {
     reports,
     uninstall() {
+      for (const restore of wrappedMcpClients.values()) restore();
+      wrappedMcpClients.clear();
       engine.resolveRemote = originalResolveRemote;
       engine.resolveMcp = originalResolveMcp;
       if (originalResolveLink) engine.resolveLink = originalResolveLink;
