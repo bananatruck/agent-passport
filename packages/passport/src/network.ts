@@ -16,11 +16,14 @@ function spread(value: JsonValue | undefined): JsonObject {
   return object(value);
 }
 
-function merge(a: JsonObject, b: JsonObject): JsonObject {
+function merge(a: JsonObject, b: JsonObject, spend: (chars: number) => void): JsonObject {
   const out: JsonObject = Object.assign(Object.create(null), a);
+  for (const [key, value] of Object.entries(a)) {
+    if (!Object.hasOwn(b, key)) spend(JSON.stringify({ [key]: value }).length);
+  }
   for (const [key, value] of Object.entries(b)) {
     const previous = out[key];
-    out[key] = isObject(previous) && isObject(value) ? merge(previous, value) : value;
+    out[key] = isObject(previous) && isObject(value) ? merge(previous, value, spend) : value;
   }
   return out;
 }
@@ -78,9 +81,12 @@ export function effectiveConfig(raw: JsonObject, published: JsonValue = {}, budg
       if (Object.hasOwn(effective, key)) {
         const def = effective[key];
         const local = agent[key];
-        spend(JSON.stringify(def)?.length ?? 4);
-        if (isObject(def) && isObject(local)) agent[key] = merge(def, local);
-        else if (!Object.hasOwn(agent, key) && def !== undefined) agent[key] = structuredClone(def);
+        // Local values were charged during substitution. Charge only defaults that survive.
+        if (isObject(def) && isObject(local)) agent[key] = merge(def, local, spend);
+        else if (!Object.hasOwn(agent, key) && def !== undefined) {
+          spend(JSON.stringify(def).length);
+          agent[key] = structuredClone(def);
+        }
       }
     }
     if (typeof agent.name === "string") agent.name = agent.name.trim();
@@ -124,8 +130,7 @@ function contactOrigin(url: string, peerOrigin: string): string {
   return parsed.origin;
 }
 
-export function classifyTool(ref: JsonValue, config: JsonObject, peerOrigin: string): ToolRef {
-  const agents = Array.isArray(config.tools) ? config.tools.filter(isObject) : [];
+export function classifyTool(ref: JsonValue, config: JsonObject, peerOrigin: string, names = new Set((Array.isArray(config.tools) ? config.tools.filter(isObject) : []).map(a => a.name))): ToolRef {
   if (typeof ref !== "string") {
     if (!isObject(ref) || typeof ref.url !== "string" || !/^https?:\/\//.test(ref.url) || (ref.tools !== undefined && (!Array.isArray(ref.tools) || !ref.tools.every(t => typeof t === "string")))) {
       throw new PassportError("DEFINITION_SHAPE", "An MCP descriptor needs an HTTP(S) url and an optional string tools array.");
@@ -133,8 +138,8 @@ export function classifyTool(ref: JsonValue, config: JsonObject, peerOrigin: str
     return { ref: ref.url, kind: "mcp", origin: contactOrigin(ref.url, peerOrigin), ...(ref.tools === undefined ? {} : { mcpTools: stringList(ref.tools) }) };
   }
   if (isMcpRef(ref)) return { ref, kind: "mcp", origin: contactOrigin(ref, peerOrigin) };
-  if ((ref.startsWith("http://") || ref.startsWith("https://") || ref.startsWith("/")) && !agents.some(a => a.name === ref)) return { ref, kind: "remote", origin: remoteOrigin(ref) };
-  if (agents.some(a => a.name === ref)) return { ref, kind: "agent" };
+  if ((ref.startsWith("http://") || ref.startsWith("https://") || ref.startsWith("/")) && !names.has(ref)) return { ref, kind: "remote", origin: remoteOrigin(ref) };
+  if (names.has(ref)) return { ref, kind: "agent" };
   if (Object.hasOwn(spread(config.link_slots), ref)) {
     const target = object(config.links)[ref];
     return { ref, kind: "link", ...(typeof target === "string" && target ? { origin: contactOrigin(target, peerOrigin) } : {}) };
@@ -149,6 +154,7 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
   if (!Array.isArray(config.tools) || !config.tools.length || !config.tools.every(isObject)) throw new PassportError("DEFINITION_SHAPE", "Definition needs a non-empty tools array of agent objects.");
   const agents = config.tools;
   const names = new Set<string>();
+  const localNames = new Set(agents.map(a => a.name));
   const origins = new Set<string>();
   const coded = object(manifest.coded_tools);
   if (coded.bundle !== undefined && (typeof coded.bundle !== "string" || !coded.bundle)) throw new PassportError("MANIFEST_SHAPE", "coded_tools.bundle must be a non-empty string.");
@@ -208,7 +214,7 @@ export async function summarizeNetwork(config: JsonObject, manifest: JsonObject,
         }
       }
     }
-    const tools = (Array.isArray(agent.tools) ? agent.tools : []).map(ref => classifyTool(ref, config, context.origin));
+    const tools = (Array.isArray(agent.tools) ? agent.tools : []).map(ref => classifyTool(ref, config, context.origin, localNames));
     // runner.js names each tool with safeName(); two references with the same safe name overwrite each other.
     const toolNames = new Map<string, string>();
     if (config.cruse) toolNames.set("render_cruse", "the runtime's render_cruse tool");
