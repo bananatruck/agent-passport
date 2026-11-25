@@ -70,6 +70,7 @@ const guard = installPassportGuard(engine, {
   pins: () => loadPins(),                       // or a PinFile
   parseHocon,                                   // enables the parser-differential check
   onReport: (report) => showCard(report),
+  approveMcpCall: (preview) => showCompletePayloadAndAsk(preview), // default: do not send
   approveUnreviewed: (report) => askVisitor(report),   // default: do not load
   approveChanged: async () => false,                   // default: do not load
 });
@@ -80,6 +81,24 @@ It keeps the runtime's own order: the visitor's consent prompt and the caller's 
 It then inspects the partner, decides by verdict, and lets the runtime compile while a scoped fetch interceptor answers the runtime's manifest, definition and `links.json` requests with exactly the verified bytes, refusing any other request to that partner's origin during the load.
 A blocked partner raises `PassportBlockedError`, which the runtime reports to the calling agent as a failed tool call.
 It was written against the runtime copy in `apps/site/public/runtime/` (see `UPSTREAM_COMMIT.txt`); the tests run that runtime's real `Engine`.
+
+A session can satisfy an approval only when its checked artifact digest matches that approval.
+Checked files stay sealed until that resolution's compilation finishes, so other page requests cannot consume them.
+Peer root-relative references resolve against the declaring peer, and peer-published links cannot expand the top site's closed peer policy.
+REST authorization headers and configured MCP authentication require HTTPS, including on loopback.
+Credential-free loopback development remains available.
+MCP requests reject redirects, have response deadlines and size limits, and accept only the exact pending JSON-RPC response ID.
+Failed MCP initialization and expired sessions are discarded before the next resolution, without replaying a failed tool call.
+
+`approveMcpCall({ url, tool, arguments })` receives the complete structured payload before each MCP tool call.
+The callback must display every argument and return `true` only after approval.
+The guard sends a captured copy of that payload, so changes made while approval waits cannot change what is sent.
+Without the callback, tool calls are refused, because the reference runtime's preview omits arguments and truncates text.
+The demo uses a scrollable confirmation dialog.
+
+Action receipts remain in the chat that started the action, even when a new chat starts before completion.
+The guard retains the latest 1,000 trace events and keeps active spans separately.
+Trace exports include `truncated` and `omittedEvents` when history has been dropped.
 
 ## CLI
 
