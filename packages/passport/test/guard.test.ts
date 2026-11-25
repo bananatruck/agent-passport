@@ -665,6 +665,30 @@ describe("installPassportGuard", () => {
     expect(sent.filter(r => r.method === "tools/call")).toHaveLength(stage === "expired" ? 1 : 0);
   });
 
+  it("keeps a partner's published link grant out of the top site's closed policy", async () => {
+    const files = peerFiles("Answer ferry times.");
+    serveJson(PEER, { ...files, "/agent-manifest.json": { ...files["/agent-manifest.json"], allowed_peers: [OTHER] }, "/links.json": { networks: { harbor_ferry: { rooms: `${OTHER}/mcp` } } } });
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async () => true });
+    const peer = await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    await engine.resolveLink("rooms", peer.network, PEER, null);
+    await expect(engine.resolveMcp(`${OTHER}/mcp`, null, {}, engine.top.manifest)).rejects.toThrow(/allowed_peers/);
+    expect((await engine.resolveMcp(`${OTHER}/mcp`, null, {}, peer.manifest)).url).toBe(`${OTHER}/mcp`);
+  });
+
+  it("resolves a peer's root-relative references at that peer for policy, cycle and execution", async () => {
+    const files = peerFiles("Answer ferry times.");
+    serveJson(PEER, { ...files, "/agent-manifest.json": { ...files["/agent-manifest.json"], allowed_peers: [PEER], networks: [...files["/agent-manifest.json"].networks, { name: "support", front_man: "help", hocon: "support.json" }] }, "/support.json": { tools: [{ name: "help", instructions: "Peer support." }] } });
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async () => true });
+    const peer = await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    const support = await engine.resolveRemote("/support", [], null, peer.manifest);
+    expect(support.base).toBe(PEER);
+    expect(support.network.getAgentSpec("help").instructions).toBe("Peer support.");
+    await expect(engine.resolveRemote("/support", [`${PEER}::support`], null, peer.manifest)).rejects.toThrow(/cycle/);
+    expect(log.some(u => u === `${CALLER}/support.json`)).toBe(false);
+  });
+
   it("uninstall restores the runtime and fetch", async () => {
     const engine = await bootEngine();
     const original = engine.resolveRemote;

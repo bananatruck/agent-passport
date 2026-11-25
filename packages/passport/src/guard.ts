@@ -28,6 +28,8 @@ export interface NsdeployEngine {
   resolveMcp(ref: string | { url: string }, parentSpan: unknown, slyData: unknown, sourceManifest: unknown): Promise<unknown>;
   _mcpClients?: Map<string, unknown>;
   _compile?(...args: unknown[]): Promise<unknown>;
+  runtimeAllowedPeers?: Set<string>;
+  resolveLink?(reference: string, network: unknown, base: string, parentSpan: unknown): Promise<unknown>;
   _assertAllowedPeer(target: string, sourceManifest: unknown): void;
 }
 
@@ -129,6 +131,9 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   const realFetch: typeof fetch = originalFetch.bind(globalThis);
   const originalResolveRemote = engine.resolveRemote;
   const originalResolveMcp = engine.resolveMcp;
+  const originalResolveLink = engine.resolveLink;
+  const topAllowedPeers = new Set(engine.runtimeAllowedPeers);
+  const manifestBases = new Map<unknown, string>();
   const reports = new Map<string, PassportReport>();
   const sessionDigests = new Map<unknown, string>();
   // URL -> verified file, active only while the original resolveRemote runs for that partner.
@@ -275,7 +280,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
 
   function assertCallerAllowedPeer(target: string, sourceManifest: unknown): void {
     if (!sourceManifest || sourceManifest === engine.top?.manifest) {
-      engine._assertAllowedPeer(target, sourceManifest);
+      engine._assertAllowedPeer.call({ ...engine, runtimeAllowedPeers: topAllowedPeers }, target, sourceManifest);
     } else {
       assertPublishedPeer(target, sourceManifest);
     }
@@ -291,7 +296,8 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     if (!engine.top) throw new Error("Agent Passport: the runtime has not loaded its own network yet.");
     // Mirror engine.resolveRemote's first steps, so policy and cycle limits still come first
     // and nothing is fetched for a partner the caller's policy does not allow.
-    const target = new URL(ref, `${engine.top.base}/`);
+    const declaringBase = manifestBases.get(sourceManifest) ?? engine.top.base;
+    const target = new URL(ref, `${declaringBase}/`);
     const origin = new URL("./", target).href.replace(/\/$/, "");
     assertCallerAllowedPeer(origin, sourceManifest);
     const lastSeg = target.pathname.split("/").filter(Boolean).pop() ?? "";
@@ -409,8 +415,9 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
             return Reflect.get(target, key, proxy);
           },
         });
-        const session = await originalResolveRemote.call(receiver, ref, chain, parentSpan, sourceManifest);
+        const session = await originalResolveRemote.call(receiver, target.href, chain, parentSpan, sourceManifest);
         sessionDigests.set(session, report.digest!.combined);
+        if (session && typeof session === "object" && "manifest" in session) manifestBases.set(session.manifest, origin);
         remember(report);
         options.onDecision?.(report, true, context);
         return session;
@@ -443,6 +450,13 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     return originalResolveMcp.call(engine, ref, parentSpan, slyData, sourceManifest);
   }
 
+  if (originalResolveLink) engine.resolveLink = async (reference, network, base, parentSpan) => {
+    const target = await originalResolveLink.call(engine, reference, network, base, parentSpan);
+    // Only links resolved by the top site may grant that site an exception.
+    if (base === engine.top?.base && typeof target === "string") topAllowedPeers.add(new URL(target).origin);
+    return target;
+  };
+
   engine.resolveRemote = guardedResolveRemote;
   engine.resolveMcp = guardedResolveMcp;
 
@@ -451,6 +465,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     uninstall() {
       engine.resolveRemote = originalResolveRemote;
       engine.resolveMcp = originalResolveMcp;
+      if (originalResolveLink) engine.resolveLink = originalResolveLink;
       if (globalThis.fetch === guardedFetch) globalThis.fetch = originalFetch;
     },
   };
