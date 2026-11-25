@@ -25,3 +25,5 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm exec playwright-core install --with-deps chromium
+      - run: node scripts/e2e.mjs

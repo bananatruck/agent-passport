@@ -264,9 +264,13 @@ describe("installPassportGuard", () => {
       top: { base: CALLER, manifest: callerFiles["/agent-manifest.json"] },
       registry: { get: (o: string, n: string) => cache.get(`${o}::${n}`), checkCycle: () => {} },
       _assertAllowedPeer: () => {},
-      resolveRemote: async (ref: string, ..._rest: unknown[]) => {
+      _compile: async (ref: string) => {
         const base = new URL("./", ref).href.replace(/\/$/, "");
         for (const file of ["agent-manifest.json", "harbor_ferry.network.json", "links.json"]) await fetch(`${base}/${file}`);
+      },
+      async resolveRemote(ref: string, ..._rest: unknown[]) {
+        await this._compile(ref);
+        const base = new URL("./", ref).href.replace(/\/$/, "");
         // Like action discovery waiting on a visitor prompt that never gets an answer.
         if (base === PEER) await new Promise(() => {});
         return { ref };
@@ -575,6 +579,259 @@ describe("installPassportGuard", () => {
     expect(parsed).toBe(0);
     // Only Agent Passport's own inspection fetched the file; the runtime never did.
     expect(log.filter((u) => u === `${PEER}/harbor_ferry.network.json`)).toHaveLength(1);
+  });
+
+  it.each(["init", "request", "override"])("refuses REST bearer headers over HTTP from %s", async kind => {
+    const files = peerFiles("Answer ferry times.");
+    const endpoint = `${PEER}/api/times`;
+    serveJson(PEER, { ...files, "/harbor_ferry.network.json": { tools: [files["/harbor_ferry.network.json"].tools[0], { name: "times", toolbox: "requests_get", args: { url: endpoint } }] } });
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async () => true });
+    await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    log.length = 0;
+    const headers = { Authorization: "Bearer test-only-placeholder" };
+    const input = kind === "init" ? endpoint : new Request(endpoint, { headers });
+    const init = kind === "request" ? undefined : { headers: new Headers(headers) };
+    await expect(fetch(input, init)).rejects.toThrow(/HTTPS/);
+    expect(log).toEqual([]);
+    await fetch(new Request(endpoint, { headers }), { headers: {} });
+    expect(log).toEqual([endpoint]);
+  });
+
+  it("returns only sessions matching the report approved by each concurrent caller", async () => {
+    const files = peerFiles("First definition.");
+    serveJson(PEER, files);
+    let n = 0;
+    routes.set(`${PEER}/harbor_ferry.network.json`, () => ({ status: 200, body: JSON.stringify(peerFiles(++n === 1 ? "First definition." : "Second definition.")["/harbor_ferry.network.json"]) }));
+    const engine = await bootEngine();
+    const approved = new Map<string, string>();
+    const refs = [`${PEER}/harbor_ferry`, `${PEER}/./harbor_ferry`];
+    guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async (report, context) => { approved.set(context.ref, report.network!.agents[0]!.instructions); return true; } });
+    const sessions = await Promise.all(refs.map(ref => engine.resolveRemote(ref, [], null, engine.top.manifest)));
+    // Approval callbacks may finish in either order. Match each result to its caller.
+    expect(new Set(approved.values()).size).toBe(2);
+    expect(sessions.map(s => s.network.getAgentSpec("ferry_desk").instructions)).toEqual(refs.map(ref => approved.get(ref)));
+  });
+
+  it("keeps checked links available after a page request during compilation", async () => {
+    const files = peerFiles("Answer ferry times.");
+    serveJson(PEER, { ...files, "/agent-manifest.json": { ...files["/agent-manifest.json"], allowed_peers: [OTHER] }, "/links.json": { networks: { harbor_ferry: { rooms: `${OTHER}/checked` } } } });
+    const engine = await bootEngine();
+    const loadLinks = engine._loadPublishedLinks;
+    engine._loadPublishedLinks = async function(base, name) {
+      if (base === PEER) {
+        await fetch(`${PEER}/links.json`);
+        serveJson(PEER, { "/links.json": { networks: { harbor_ferry: { rooms: `${OTHER}/unchecked` } } } });
+      }
+      return loadLinks.call(this, base, name);
+    };
+    guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async () => true });
+    const session = await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    expect(session.network.getLink("rooms")).toBe(`${OTHER}/checked`);
+    expect(log.filter(u => u === `${PEER}/links.json`)).toHaveLength(1);
+  });
+
+  it("retains an MCP session after unrelated initialization errors and tool RPC errors", async () => {
+    const endpoint = "https://mcp.example/mcp";
+    const engine = await bootEngine();
+    engine.top.manifest.allowed_peers.push(endpoint);
+    const sent: string[] = [];
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) !== endpoint) return inner(input, init);
+      const rpc = JSON.parse(String(init?.body));
+      sent.push(rpc.method);
+      const error = { jsonrpc: "2.0", id: rpc.id, error: { code: -32603, message: "tool unavailable" } };
+      if (rpc.method === "tools/call") return Response.json(error);
+      const result = { jsonrpc: "2.0", id: rpc.id, result: rpc.method === "tools/list" ? { tools: [] } : {} };
+      return rpc.method === "initialize"
+        ? new Response([{ ...error, id: rpc.id + 1 }, result].map(value => `data: ${JSON.stringify(value)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } })
+        : Response.json(result);
+    };
+    guard = installPassportGuard(engine, { pins: null, approveMcpCall: async () => true });
+    const client = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    expect(await client.listTools()).toEqual([]);
+    await expect(client.callTool("write", {})).rejects.toThrow(/tool unavailable/);
+    const next = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    expect(next).toBe(client);
+    expect(await next.listTools()).toEqual([]);
+    expect(sent.filter(method => method === "initialize")).toHaveLength(1);
+  });
+
+  it.each(["initialize", "initialize?query", "initialize RPC JSON", "initialize RPC SSE", "notifications/initialized", "body", "expired"])("recovers MCP sessions after %s fails without replaying a call", async stage => {
+    const endpoint = `https://mcp.example/mcp${stage.includes("?") ? "?service=tools" : ""}`;
+    const engine = await bootEngine();
+    engine.top.manifest.allowed_peers.push(endpoint);
+    const sent: { method: string; session: string | null }[] = [];
+    let failed = false;
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) !== endpoint) return inner(input, init);
+      const rpc = JSON.parse(String(init?.body));
+      sent.push({ method: rpc.method, session: new Headers(init?.headers).get("mcp-session-id") });
+      if (!failed && stage.startsWith("initialize RPC") && rpc.method === "initialize") {
+        failed = true;
+        const error = { jsonrpc: "2.0", id: rpc.id, error: { code: -32603, message: "initialization timed out" } };
+        const headers = { "Mcp-Session-Id": "old-session" };
+        return stage.endsWith("SSE")
+          ? new Response(`data: ${JSON.stringify(error)}\n\n`, { headers: { ...headers, "Content-Type": "text/event-stream" } })
+          : Response.json(error, { headers });
+      }
+      if (!failed && stage === "body" && rpc.method === "initialize") {
+        failed = true;
+        return new Response(new ReadableStream({ start(controller) { init?.signal?.addEventListener("abort", () => controller.error(new Error("initialization timed out")), { once: true }); } }), { headers: { "Mcp-Session-Id": "old-session" } });
+      }
+      if (!failed && rpc.method === (stage === "expired" ? "tools/call" : stage.split("?")[0])) {
+        failed = true;
+        if (stage === "expired") return new Response("expired", { status: 404 });
+        throw new Error("initialization timed out");
+      }
+      return Response.json({ jsonrpc: "2.0", id: rpc.id, result: rpc.method === "tools/list" ? { tools: [] } : {} }, { headers: { "Mcp-Session-Id": failed ? "new-session" : "old-session" } });
+    };
+    guard = installPassportGuard(engine, { pins: null, mcpLimits: { timeoutMs: 20 }, approveMcpCall: async () => true });
+    const first = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    if (stage === "expired") {
+      await first.listTools();
+      await expect(first.callTool("write", {})).rejects.toThrow(/404/);
+    } else await expect(first.listTools()).rejects.toThrow(/timed out/);
+    const before = sent.length;
+    const second = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    const third = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    await Promise.all([second.listTools(), third.listTools()]);
+    expect(sent[before]).toEqual({ method: "initialize", session: null });
+    expect(sent.slice(before).filter(r => r.method === "initialize")).toHaveLength(1);
+    expect(sent.filter(r => r.method === "tools/call")).toHaveLength(stage === "expired" ? 1 : 0);
+  });
+
+  it("keeps a partner's published link grant out of the top site's closed policy", async () => {
+    const files = peerFiles("Answer ferry times.");
+    serveJson(PEER, { ...files, "/agent-manifest.json": { ...files["/agent-manifest.json"], allowed_peers: [OTHER] }, "/links.json": { networks: { harbor_ferry: { rooms: `${OTHER}/mcp` } } } });
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async () => true });
+    const peer = await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    await engine.resolveLink("rooms", peer.network, PEER, null);
+    await expect(engine.resolveMcp(`${OTHER}/mcp`, null, {}, engine.top.manifest)).rejects.toThrow(/allowed_peers/);
+    expect((await engine.resolveMcp(`${OTHER}/mcp`, null, {}, peer.manifest)).url).toBe(`${OTHER}/mcp`);
+  });
+
+  it("resolves a peer's root-relative references at that peer for policy, cycle and execution", async () => {
+    const files = peerFiles("Answer ferry times.");
+    serveJson(PEER, { ...files, "/agent-manifest.json": { ...files["/agent-manifest.json"], allowed_peers: [PEER], networks: [...files["/agent-manifest.json"].networks, { name: "support", front_man: "help", hocon: "support.json" }] }, "/support.json": { tools: [{ name: "help", instructions: "Peer support." }] } });
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async () => true });
+    const peer = await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    const support = await engine.resolveRemote("/support", [], null, peer.manifest);
+    expect(support.base).toBe(PEER);
+    expect(support.network.getAgentSpec("help").instructions).toBe("Peer support.");
+    await expect(engine.resolveRemote("/support", [`${PEER}::support`], null, peer.manifest)).rejects.toThrow(/cycle/);
+    expect(log.some(u => u === `${CALLER}/support.json`)).toBe(false);
+  });
+
+  it("keeps late partner action receipts out of a new chat", async () => {
+    const engine = await bootEngine();
+    let finish!: (value: unknown) => void;
+    let entered!: () => void;
+    const running = new Promise<void>(r => { entered = r; });
+    const action = engine.actions.register({ base: PEER, network: "partner" }, { name: "save", description: "Save data", inputSchema: { type: "object", properties: {} } }, () => { entered(); return new Promise(r => { finish = r; }); });
+    engine.actionPresentations.set("old", { components: [{ kind: "action", id: "save", action, arguments: {} }] });
+    engine.onActionConfirm = async () => true;
+    guard = installPassportGuard(engine, { pins: null });
+    const pending = engine.submitActions({ turnId: "old", componentId: "save" });
+    await running;
+    engine.resetHistory();
+    finish({ saved: true });
+    expect(await pending).toHaveLength(1);
+    expect(engine.history).toEqual([]);
+  });
+
+  it("bounds retained trace events while preserving active spans and marking truncated exports", async () => {
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null });
+    const active = engine.trace.start("remote_call");
+    for (let i = 0; i < 1200; i++) {
+      const span = engine.trace.start("mcp_call");
+      engine.trace.update(span, { progress: i });
+      engine.trace.end(span);
+    }
+    expect(engine.trace.events.length).toBeLessThanOrEqual(1000);
+    expect([...engine.trace.spans.keys()]).toEqual([active]);
+    expect(engine.trace.export()).toMatchObject({ truncated: true, omittedEvents: expect.any(Number) });
+    engine.trace.end(active);
+    expect(engine.trace.spans.size).toBe(0);
+  });
+
+  it.each(["{ tools: [ } ] }", '{"tools":[{"name":"ferry_desk","instructions":"Help."},{"name":" ferry_desk ","instructions":"Different."}]}'])("rejects unsafe definitions before the runtime parser sees %s", async text => {
+    serveJson(PEER, peerFiles("Answer ferry times."));
+    routes.set(`${PEER}/harbor_ferry.network.json`, () => ({ status: 200, body: text }));
+    const engine = await bootEngine();
+    let parsed = 0;
+    guard = installPassportGuard(engine, { pins: null, parseHocon: value => { parsed++; return parseHocon(value); }, approveUnreviewed: async () => true });
+    await expect(engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest)).rejects.toBeInstanceOf(PassportBlockedError);
+    expect(parsed).toBe(0);
+    expect(engine.registry.get(PEER, "harbor_ferry")).toBeUndefined();
+  });
+
+  it.each([false, true])("wraps resolving MCP clients only while installed, uninstallBeforeResolution=%s", async uninstallBeforeResolution => {
+    const endpoint = "https://mcp.example/mcp";
+    const engine = await bootEngine();
+    engine.top.manifest.allowed_peers.push(endpoint);
+    const originalCallTool = (await engine.resolveMcp(endpoint, null, {}, engine.top.manifest)).callTool;
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) !== endpoint) return inner(input, init);
+      const rpc = JSON.parse(String(init?.body));
+      return Response.json({ jsonrpc: "2.0", id: rpc.id, result: { content: [{ type: "text", text: "sent" }] } });
+    };
+    guard = installPassportGuard(engine, { pins: null });
+    const pending = engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    // Uninstall before the guarded resolver resumes from the runtime's promise.
+    if (uninstallBeforeResolution) guard.uninstall();
+    const client = await pending;
+    if (!uninstallBeforeResolution) {
+      expect(client.callTool).not.toBe(originalCallTool);
+      await expect(client.callTool("write", {})).rejects.toThrow(/not approved/);
+      guard.uninstall();
+    }
+    expect(client.callTool).toBe(originalCallTool);
+    expect(await client.callTool("write", {})).toBe("sent");
+  });
+
+  it.each([false, true])("uninstall restores guarded MCP methods, evicted=%s", async evicted => {
+    const endpoint = "https://mcp.example/mcp";
+    const engine = await bootEngine();
+    engine.top.manifest.allowed_peers.push(endpoint);
+    const originalCallTool = (await engine.resolveMcp(endpoint, null, {}, engine.top.manifest)).callTool;
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) !== endpoint) return inner(input, init);
+      const rpc = JSON.parse(String(init?.body));
+      return Response.json({ jsonrpc: "2.0", id: rpc.id, result: { content: [{ type: "text", text: "sent" }] } });
+    };
+    guard = installPassportGuard(engine, { pins: null });
+    const client = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    await expect(client.callTool("write", {})).rejects.toThrow(/not approved/);
+    const current = evicted
+      ? await engine.resolveMcp(endpoint, null, { http_headers: { [endpoint]: { "X-Scope": "other" } } }, engine.top.manifest)
+      : client;
+    await expect(current.callTool("write", {})).rejects.toThrow(/not approved/);
+    guard.uninstall();
+    const resolved = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    expect(resolved).toBe(current);
+    expect(client.callTool).toBe(originalCallTool);
+    expect(resolved.callTool).toBe(originalCallTool);
+    expect(await client.callTool("write", {})).toBe("sent");
+    expect(await resolved.callTool("write", {})).toBe("sent");
+  });
+
+  it("uninstall preserves a later replacement of a guarded MCP method", async () => {
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null });
+    const client = await engine.resolveMcp(`${PEER}/mcp`, null, {}, engine.top.manifest);
+    const replacement = async () => "replacement";
+    client.callTool = replacement;
+    guard.uninstall();
+    expect(client.callTool).toBe(replacement);
+    expect(await client.callTool("write", {})).toBe("replacement");
   });
 
   it("uninstall restores the runtime and fetch", async () => {

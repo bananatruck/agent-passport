@@ -2,6 +2,7 @@
 // and every partner network. Also publishes the read-only facade that site-actions.js
 // exposes to the Trip Desk agent as website_get_partner_passports and website_open_passport.
 import { installPassportGuard, type GuardHandle } from "agent-passport/guard";
+import { requestMcpApproval } from "./mcp-approval";
 import type { PassportReport } from "agent-passport";
 import { loadPins, siteBase, loadPeers, type DemoPeers } from "./passport-bridge";
 
@@ -109,6 +110,7 @@ export function startDesk(root: HTMLElement): Promise<void> {
           window.dispatchEvent(new CustomEvent("passport:report", { detail: { report } }));
         }
       },
+      approveMcpCall: requestMcpApproval,
       approveUnreviewed: (report) => askVisitor(report),
       // Changed partners stay held: only the site's publisher can review them again.
       approveChanged: async (report) => {

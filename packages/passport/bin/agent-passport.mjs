@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, rename, rm } from "node:fs/promises";
 import { realpathSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const usage = {
@@ -76,7 +78,13 @@ export async function runCli(argv, { api, stdout = text => process.stdout.write(
       const previous = core.findPin(pins, pin.network);
       pins.pins = pins.pins.filter(p => p !== previous);
       pins.pins.push(pin);
-      await writeFile(file, core.serializePinFile(pins), "utf8");
+      const temporary = join(dirname(file), `.${basename(file)}.${randomUUID()}.tmp`);
+      try {
+        await writeFile(temporary, core.serializePinFile(pins), { encoding: "utf8", flag: "wx", mode: 0o600 });
+        await rename(temporary, file);
+      } finally {
+        await rm(temporary, { force: true });
+      }
       stdout(`Pinned ${pin.network} in ${file}\n`);
       return 0;
     }
