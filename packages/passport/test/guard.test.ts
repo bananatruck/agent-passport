@@ -771,6 +771,31 @@ describe("installPassportGuard", () => {
     expect(engine.registry.get(PEER, "harbor_ferry")).toBeUndefined();
   });
 
+  it.each([false, true])("wraps resolving MCP clients only while installed, uninstallBeforeResolution=%s", async uninstallBeforeResolution => {
+    const endpoint = "https://mcp.example/mcp";
+    const engine = await bootEngine();
+    engine.top.manifest.allowed_peers.push(endpoint);
+    const originalCallTool = (await engine.resolveMcp(endpoint, null, {}, engine.top.manifest)).callTool;
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) !== endpoint) return inner(input, init);
+      const rpc = JSON.parse(String(init?.body));
+      return Response.json({ jsonrpc: "2.0", id: rpc.id, result: { content: [{ type: "text", text: "sent" }] } });
+    };
+    guard = installPassportGuard(engine, { pins: null });
+    const pending = engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    // Uninstall before the guarded resolver resumes from the runtime's promise.
+    if (uninstallBeforeResolution) guard.uninstall();
+    const client = await pending;
+    if (!uninstallBeforeResolution) {
+      expect(client.callTool).not.toBe(originalCallTool);
+      await expect(client.callTool("write", {})).rejects.toThrow(/not approved/);
+      guard.uninstall();
+    }
+    expect(client.callTool).toBe(originalCallTool);
+    expect(await client.callTool("write", {})).toBe("sent");
+  });
+
   it.each([false, true])("uninstall restores guarded MCP methods, evicted=%s", async evicted => {
     const endpoint = "https://mcp.example/mcp";
     const engine = await bootEngine();

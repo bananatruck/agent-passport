@@ -141,6 +141,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   const topAllowedPeers = new Set(engine.runtimeAllowedPeers);
   const manifestBases = new Map<unknown, string>();
   const wrappedMcpClients = new Map<object, () => void>();
+  let installed = true;
   const trace = engine.trace;
   const originalTraceExport = trace?.export;
   let omittedEvents = 0;
@@ -476,6 +477,8 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     if (previous !== credKey) engine._mcpClients?.delete(url);
     mcpCredentialFingerprint.set(url, credKey);
     const client = await originalResolveMcp.call(engine, ref, parentSpan, slyData, sourceManifest);
+    // Uninstall ends this installation's lifetime, including pending resolutions.
+    if (!installed) return client;
     if (client && typeof client === "object" && "callTool" in client && typeof client.callTool === "function" && !wrappedMcpClients.has(client)) {
       const callTool = client.callTool;
       const guardedCallTool = async (tool: string, args: unknown, span: unknown) => {
@@ -514,6 +517,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   return {
     reports,
     uninstall() {
+      installed = false;
       for (const restore of wrappedMcpClients.values()) restore();
       wrappedMcpClients.clear();
       engine.resolveRemote = originalResolveRemote;
