@@ -706,6 +706,22 @@ describe("installPassportGuard", () => {
     expect(engine.history).toEqual([]);
   });
 
+  it("bounds retained trace events while preserving active spans and marking truncated exports", async () => {
+    const engine = await bootEngine();
+    guard = installPassportGuard(engine, { pins: null });
+    const active = engine.trace.start("remote_call");
+    for (let i = 0; i < 1200; i++) {
+      const span = engine.trace.start("mcp_call");
+      engine.trace.update(span, { progress: i });
+      engine.trace.end(span);
+    }
+    expect(engine.trace.events.length).toBeLessThanOrEqual(1000);
+    expect([...engine.trace.spans.keys()]).toEqual([active]);
+    expect(engine.trace.export()).toMatchObject({ truncated: true, omittedEvents: expect.any(Number) });
+    engine.trace.end(active);
+    expect(engine.trace.spans.size).toBe(0);
+  });
+
   it("uninstall restores the runtime and fetch", async () => {
     const engine = await bootEngine();
     const original = engine.resolveRemote;

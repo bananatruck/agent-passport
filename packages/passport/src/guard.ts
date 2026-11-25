@@ -30,6 +30,7 @@ export interface NsdeployEngine {
   _compile?(...args: unknown[]): Promise<unknown>;
   runtimeAllowedPeers?: Set<string>;
   resolveLink?(reference: string, network: unknown, base: string, parentSpan: unknown): Promise<unknown>;
+  trace?: EventTarget & { events: unknown[]; spans: Map<string, { status?: unknown }>; export(): { events: unknown[] } };
   history?: unknown[];
   submitActions?(input: { turnId: string; componentId: string; values?: Record<string, unknown> }): Promise<unknown>;
   _assertAllowedPeer(target: string, sourceManifest: unknown): void;
@@ -137,6 +138,24 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   const originalResolveLink = engine.resolveLink;
   const topAllowedPeers = new Set(engine.runtimeAllowedPeers);
   const manifestBases = new Map<unknown, string>();
+  const trace = engine.trace;
+  const originalTraceExport = trace?.export;
+  let omittedEvents = 0;
+  const trimTrace = (event?: Event) => {
+    if (!trace) return;
+    const excess = Math.max(0, trace.events.length - 1000);
+    omittedEvents += excess;
+    if (excess) trace.events.splice(0, excess);
+    const detail: unknown = event && "detail" in event ? event.detail : undefined;
+    if (detail && typeof detail === "object" && "phase" in detail && detail.phase === "end" && "id" in detail && typeof detail.id === "string") trace.spans.delete(detail.id);
+  };
+  if (trace && originalTraceExport) {
+    // spans holds active work; completed spans remain only in the bounded event history.
+    for (const [id, span] of trace.spans) if (span.status !== "running") trace.spans.delete(id);
+    trimTrace();
+    trace.addEventListener("event", trimTrace);
+    trace.export = () => ({ ...originalTraceExport.call(trace), truncated: omittedEvents > 0, omittedEvents });
+  }
   const reports = new Map<string, PassportReport>();
   const sessionDigests = new Map<unknown, string>();
   // URL -> verified file, active only while the original resolveRemote runs for that partner.
@@ -478,6 +497,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
       engine.resolveMcp = originalResolveMcp;
       if (originalSubmitActions) engine.submitActions = originalSubmitActions;
       if (originalResolveLink) engine.resolveLink = originalResolveLink;
+      if (trace && originalTraceExport) { trace.removeEventListener("event", trimTrace); trace.export = originalTraceExport; }
       if (globalThis.fetch === guardedFetch) globalThis.fetch = originalFetch;
     },
   };
