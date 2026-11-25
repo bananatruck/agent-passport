@@ -650,7 +650,7 @@ describe("installPassportGuard", () => {
       }
       return Response.json({ jsonrpc: "2.0", id: rpc.id, result: rpc.method === "tools/list" ? { tools: [] } : {} }, { headers: { "Mcp-Session-Id": failed ? "new-session" : "old-session" } });
     };
-    guard = installPassportGuard(engine, { pins: null, mcpLimits: { timeoutMs: 20 } });
+    guard = installPassportGuard(engine, { pins: null, mcpLimits: { timeoutMs: 20 }, approveMcpCall: async () => true });
     const first = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
     if (stage === "expired") {
       await first.listTools();

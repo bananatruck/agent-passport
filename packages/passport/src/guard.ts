@@ -56,6 +56,8 @@ export interface GuardOptions {
   approveUnreviewed?: (report: PassportReport, context: GuardContext) => Promise<boolean>;
   /** Ask the visitor whether to load a changed partner. Default: do not load (the publisher must review it again). */
   approveChanged?: (report: PassportReport, context: GuardContext) => Promise<boolean>;
+  /** Show every structured argument before a tool call. Default: refuse the call. */
+  approveMcpCall?: (preview: { url: string; tool: string; arguments: unknown }) => Promise<boolean>;
   /** Called with the final decision for each check. */
   onDecision?: (report: PassportReport, loaded: boolean, context: GuardContext) => void;
   /**
@@ -134,10 +136,11 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   const realFetch: typeof fetch = originalFetch.bind(globalThis);
   const originalResolveRemote = engine.resolveRemote;
   const originalResolveMcp = engine.resolveMcp;
-  const originalSubmitActions = engine.submitActions;
   const originalResolveLink = engine.resolveLink;
+  const originalSubmitActions = engine.submitActions;
   const topAllowedPeers = new Set(engine.runtimeAllowedPeers);
   const manifestBases = new Map<unknown, string>();
+  const wrappedMcpClients = new WeakSet<object>();
   const trace = engine.trace;
   const originalTraceExport = trace?.export;
   let omittedEvents = 0;
@@ -469,7 +472,19 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     const previous = mcpCredentialFingerprint.get(url);
     if (previous !== credKey) engine._mcpClients?.delete(url);
     mcpCredentialFingerprint.set(url, credKey);
-    return originalResolveMcp.call(engine, ref, parentSpan, slyData, sourceManifest);
+    const client = await originalResolveMcp.call(engine, ref, parentSpan, slyData, sourceManifest);
+    if (client && typeof client === "object" && "callTool" in client && typeof client.callTool === "function" && !wrappedMcpClients.has(client)) {
+      const callTool = client.callTool;
+      client.callTool = async (tool: string, args: unknown, span: unknown) => {
+        // Serialize once before awaiting approval, so later mutations cannot change the payload.
+        const payload: unknown = JSON.parse(JSON.stringify(args ?? {}));
+        const approved = await options.approveMcpCall?.({ url, tool, arguments: structuredClone(payload) });
+        if (!approved) throw new TypeError("Agent Passport: the complete MCP payload was not approved.");
+        return Reflect.apply(callTool, client, [tool, payload, span]);
+      };
+      wrappedMcpClients.add(client);
+    }
+    return client;
   }
 
   if (originalResolveLink) engine.resolveLink = async (reference, network, base, parentSpan) => {
@@ -478,7 +493,6 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     if (base === engine.top?.base && typeof target === "string") topAllowedPeers.add(new URL(target).origin);
     return target;
   };
-
   if (originalSubmitActions) engine.submitActions = (input) => {
     // resetHistory replaces the array. A late receipt belongs to the invocation
     // that started it, so capture that array instead of writing into the new chat.
@@ -495,8 +509,8 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     uninstall() {
       engine.resolveRemote = originalResolveRemote;
       engine.resolveMcp = originalResolveMcp;
-      if (originalSubmitActions) engine.submitActions = originalSubmitActions;
       if (originalResolveLink) engine.resolveLink = originalResolveLink;
+      if (originalSubmitActions) engine.submitActions = originalSubmitActions;
       if (trace && originalTraceExport) { trace.removeEventListener("event", trimTrace); trace.export = originalTraceExport; }
       if (globalThis.fetch === guardedFetch) globalThis.fetch = originalFetch;
     },

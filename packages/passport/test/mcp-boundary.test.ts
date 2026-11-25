@@ -55,3 +55,31 @@ it("keeps SSE notifications and returns the matching response after an unrelated
   expect(notices).toHaveLength(1);
 });
 
+it("requires approval of the complete structured MCP payload, including fields beyond request", async () => {
+  const previews: unknown[] = [];
+  const args = { request: "Help", customer: "test-customer", details: { message: "x".repeat(200) } };
+  const client = await clientFor(id => Response.json({ id, result: {} }), { approveMcpCall: async (preview: unknown) => { previews.push(preview); return true; } });
+  await client.callTool("send", args);
+  expect(previews).toEqual([{ url: endpoint, tool: "send", arguments: args }]);
+  expect(toolCalls).toEqual([{ name: "send", arguments: args }]);
+});
+
+it("sends no MCP tool payload without complete-payload approval", async () => {
+  const client = await clientFor(id => Response.json({ id, result: {} }));
+  await expect(client.callTool("send", { request: "Help", customer: "test-customer" })).rejects.toThrow(/approv/i);
+  expect(toolCalls).toEqual([]);
+});
+
+it("sends the approved snapshot even if the caller changes arguments while approval waits", async () => {
+  const args = { request: "Help", customer: "first" };
+  let decide!: (ok: boolean) => void;
+  let ready!: () => void;
+  const waiting = new Promise<void>(resolve => { ready = resolve; });
+  const client = await clientFor(id => Response.json({ id, result: {} }), { approveMcpCall: async () => { ready(); return new Promise(resolve => { decide = resolve; }); } });
+  const pending = client.callTool("send", args);
+  await waiting;
+  args.customer = "changed";
+  decide(true);
+  await pending;
+  expect(toolCalls).toEqual([{ name: "send", arguments: { request: "Help", customer: "first" } }]);
+});
