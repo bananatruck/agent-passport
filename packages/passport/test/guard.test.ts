@@ -722,6 +722,17 @@ describe("installPassportGuard", () => {
     expect(engine.trace.spans.size).toBe(0);
   });
 
+  it.each(["{ tools: [ } ] }", '{"tools":[{"name":"ferry_desk","instructions":"Help."},{"name":" ferry_desk ","instructions":"Different."}]}'])("rejects unsafe definitions before the runtime parser sees %s", async text => {
+    serveJson(PEER, peerFiles("Answer ferry times."));
+    routes.set(`${PEER}/harbor_ferry.network.json`, () => ({ status: 200, body: text }));
+    const engine = await bootEngine();
+    let parsed = 0;
+    guard = installPassportGuard(engine, { pins: null, parseHocon: value => { parsed++; return parseHocon(value); }, approveUnreviewed: async () => true });
+    await expect(engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest)).rejects.toBeInstanceOf(PassportBlockedError);
+    expect(parsed).toBe(0);
+    expect(engine.registry.get(PEER, "harbor_ferry")).toBeUndefined();
+  });
+
   it("uninstall restores the runtime and fetch", async () => {
     const engine = await bootEngine();
     const original = engine.resolveRemote;
