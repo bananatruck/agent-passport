@@ -604,10 +604,13 @@ describe("installPassportGuard", () => {
     let n = 0;
     routes.set(`${PEER}/harbor_ferry.network.json`, () => ({ status: 200, body: JSON.stringify(peerFiles(++n === 1 ? "First definition." : "Second definition.")["/harbor_ferry.network.json"]) }));
     const engine = await bootEngine();
-    const approved: string[] = [];
-    guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async r => { approved.push(r.network!.agents[0]!.instructions); return true; } });
-    const sessions = await Promise.all([engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest), engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest)]);
-    expect(sessions.map(s => s.network.getAgentSpec("ferry_desk").instructions)).toEqual(approved);
+    const approved = new Map<string, string>();
+    const refs = [`${PEER}/harbor_ferry?caller=first`, `${PEER}/harbor_ferry?caller=second`];
+    guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async (report, context) => { approved.set(context.ref, report.network!.agents[0]!.instructions); return true; } });
+    const sessions = await Promise.all(refs.map(ref => engine.resolveRemote(ref, [], null, engine.top.manifest)));
+    // Approval callbacks may finish in either order. Match each result to its caller.
+    expect(new Set(approved.values()).size).toBe(2);
+    expect(sessions.map(s => s.network.getAgentSpec("ferry_desk").instructions)).toEqual(refs.map(ref => approved.get(ref)));
   });
 
   it("keeps checked links available after a page request during compilation", async () => {
