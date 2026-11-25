@@ -628,7 +628,34 @@ describe("installPassportGuard", () => {
     expect(log.filter(u => u === `${PEER}/links.json`)).toHaveLength(1);
   });
 
-  it.each(["initialize", "initialize?query", "notifications/initialized", "body", "expired"])("recovers MCP sessions after %s fails without replaying a call", async stage => {
+  it("retains an MCP session after unrelated initialization errors and tool RPC errors", async () => {
+    const endpoint = "https://mcp.example/mcp";
+    const engine = await bootEngine();
+    engine.top.manifest.allowed_peers.push(endpoint);
+    const sent: string[] = [];
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) !== endpoint) return inner(input, init);
+      const rpc = JSON.parse(String(init?.body));
+      sent.push(rpc.method);
+      const error = { jsonrpc: "2.0", id: rpc.id, error: { code: -32603, message: "tool unavailable" } };
+      if (rpc.method === "tools/call") return Response.json(error);
+      const result = { jsonrpc: "2.0", id: rpc.id, result: rpc.method === "tools/list" ? { tools: [] } : {} };
+      return rpc.method === "initialize"
+        ? new Response([{ ...error, id: rpc.id + 1 }, result].map(value => `data: ${JSON.stringify(value)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } })
+        : Response.json(result);
+    };
+    guard = installPassportGuard(engine, { pins: null, approveMcpCall: async () => true });
+    const client = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    expect(await client.listTools()).toEqual([]);
+    await expect(client.callTool("write", {})).rejects.toThrow(/tool unavailable/);
+    const next = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    expect(next).toBe(client);
+    expect(await next.listTools()).toEqual([]);
+    expect(sent.filter(method => method === "initialize")).toHaveLength(1);
+  });
+
+  it.each(["initialize", "initialize?query", "initialize RPC JSON", "initialize RPC SSE", "notifications/initialized", "body", "expired"])("recovers MCP sessions after %s fails without replaying a call", async stage => {
     const endpoint = `https://mcp.example/mcp${stage.includes("?") ? "?service=tools" : ""}`;
     const engine = await bootEngine();
     engine.top.manifest.allowed_peers.push(endpoint);
@@ -639,6 +666,14 @@ describe("installPassportGuard", () => {
       if (String(input) !== endpoint) return inner(input, init);
       const rpc = JSON.parse(String(init?.body));
       sent.push({ method: rpc.method, session: new Headers(init?.headers).get("mcp-session-id") });
+      if (!failed && stage.startsWith("initialize RPC") && rpc.method === "initialize") {
+        failed = true;
+        const error = { jsonrpc: "2.0", id: rpc.id, error: { code: -32603, message: "initialization timed out" } };
+        const headers = { "Mcp-Session-Id": "old-session" };
+        return stage.endsWith("SSE")
+          ? new Response(`data: ${JSON.stringify(error)}\n\n`, { headers: { ...headers, "Content-Type": "text/event-stream" } })
+          : Response.json(error, { headers });
+      }
       if (!failed && stage === "body" && rpc.method === "initialize") {
         failed = true;
         return new Response(new ReadableStream({ start(controller) { init?.signal?.addEventListener("abort", () => controller.error(new Error("initialization timed out")), { once: true }); } }), { headers: { "Mcp-Session-Id": "old-session" } });

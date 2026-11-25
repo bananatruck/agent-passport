@@ -235,7 +235,10 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     try {
       const rpc: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : null;
       if (rpc && typeof rpc === "object" && "id" in rpc && (typeof rpc.id === "string" || typeof rpc.id === "number")) {
-        checked = capped.pipeThrough(mcpResponseTransform(rpc.id, response.headers.get("content-type") ?? ""));
+        // The runtime retains rejected initialization promises. Evict that client even
+        // when transport succeeded, so a later resolution can start a fresh session.
+        const initialization = "method" in rpc && rpc.method === "initialize";
+        checked = capped.pipeThrough(mcpResponseTransform(rpc.id, response.headers.get("content-type") ?? "", initialization ? invalidate : undefined));
       }
     } catch { /* A request without a JSON-RPC body still gets the transport limits. */ }
     const reader = checked.getReader();

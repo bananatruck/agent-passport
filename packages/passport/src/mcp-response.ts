@@ -1,5 +1,5 @@
 /** Adapt peer-controlled JSON-RPC responses before the reference runtime reads them. */
-export function mcpResponseTransform(expectId: string | number, contentType: string): TransformStream<Uint8Array, Uint8Array> {
+export function mcpResponseTransform(expectId: string | number, contentType: string, onRpcError?: () => void): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   const sse = /text\/event-stream/i.test(contentType);
@@ -8,12 +8,17 @@ export function mcpResponseTransform(expectId: string | number, contentType: str
   let block: string[] = [];
   let afterCr = false;
 
+  const accept = (rpc: object) => {
+    if ("error" in rpc && rpc.error) onRpcError?.();
+  };
   const matches = (payload: string): boolean => {
     let rpc: unknown;
     try { rpc = JSON.parse(payload); } catch { return false; }
     if (!rpc || typeof rpc !== "object" || Array.isArray(rpc)) return false;
     if (!("result" in rpc) && !("error" in rpc)) return true; // notification
-    return "id" in rpc && rpc.id === expectId;
+    if (!("id" in rpc) || rpc.id !== expectId) return false;
+    accept(rpc);
+    return true;
   };
   const event = (controller: TransformStreamDefaultController<Uint8Array>) => {
     const payload = block.filter(l => l.trimStart().startsWith("data:")).map(l => l.slice(l.indexOf(":") + 1).trimStart()).join("\n");
@@ -51,6 +56,7 @@ export function mcpResponseTransform(expectId: string | number, contentType: str
           if (!rpc || typeof rpc !== "object" || !("id" in rpc) || rpc.id !== expectId || (!("result" in rpc) && !("error" in rpc))) {
             throw new Error("Agent Passport: MCP response has no matching request ID.");
           }
+          accept(rpc);
           controller.enqueue(encoder.encode(text));
         } else {
           lines(text, controller);
