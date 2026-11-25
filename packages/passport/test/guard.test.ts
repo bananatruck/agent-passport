@@ -264,9 +264,13 @@ describe("installPassportGuard", () => {
       top: { base: CALLER, manifest: callerFiles["/agent-manifest.json"] },
       registry: { get: (o: string, n: string) => cache.get(`${o}::${n}`), checkCycle: () => {} },
       _assertAllowedPeer: () => {},
-      resolveRemote: async (ref: string, ..._rest: unknown[]) => {
+      _compile: async (ref: string) => {
         const base = new URL("./", ref).href.replace(/\/$/, "");
         for (const file of ["agent-manifest.json", "harbor_ferry.network.json", "links.json"]) await fetch(`${base}/${file}`);
+      },
+      async resolveRemote(ref: string, ..._rest: unknown[]) {
+        await this._compile(ref);
+        const base = new URL("./", ref).href.replace(/\/$/, "");
         // Like action discovery waiting on a visitor prompt that never gets an answer.
         if (base === PEER) await new Promise(() => {});
         return { ref };
@@ -592,6 +596,36 @@ describe("installPassportGuard", () => {
     expect(log).toEqual([]);
     await fetch(new Request(endpoint, { headers }), { headers: {} });
     expect(log).toEqual([endpoint]);
+  });
+
+  it("returns only sessions matching the report approved by each concurrent caller", async () => {
+    const files = peerFiles("First definition.");
+    serveJson(PEER, files);
+    let n = 0;
+    routes.set(`${PEER}/harbor_ferry.network.json`, () => ({ status: 200, body: JSON.stringify(peerFiles(++n === 1 ? "First definition." : "Second definition.")["/harbor_ferry.network.json"]) }));
+    const engine = await bootEngine();
+    const approved: string[] = [];
+    guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async r => { approved.push(r.network!.agents[0]!.instructions); return true; } });
+    const sessions = await Promise.all([engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest), engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest)]);
+    expect(sessions.map(s => s.network.getAgentSpec("ferry_desk").instructions)).toEqual(approved);
+  });
+
+  it("keeps checked links available after a page request during compilation", async () => {
+    const files = peerFiles("Answer ferry times.");
+    serveJson(PEER, { ...files, "/agent-manifest.json": { ...files["/agent-manifest.json"], allowed_peers: [OTHER] }, "/links.json": { networks: { harbor_ferry: { rooms: `${OTHER}/checked` } } } });
+    const engine = await bootEngine();
+    const loadLinks = engine._loadPublishedLinks;
+    engine._loadPublishedLinks = async function(base, name) {
+      if (base === PEER) {
+        await fetch(`${PEER}/links.json`);
+        serveJson(PEER, { "/links.json": { networks: { harbor_ferry: { rooms: `${OTHER}/unchecked` } } } });
+      }
+      return loadLinks.call(this, base, name);
+    };
+    guard = installPassportGuard(engine, { pins: null, approveUnreviewed: async () => true });
+    const session = await engine.resolveRemote(`${PEER}/harbor_ferry`, [], null, engine.top.manifest);
+    expect(session.network.getLink("rooms")).toBe(`${OTHER}/checked`);
+    expect(log.filter(u => u === `${PEER}/links.json`)).toHaveLength(1);
   });
 
   it("uninstall restores the runtime and fetch", async () => {

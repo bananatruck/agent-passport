@@ -20,11 +20,13 @@ export interface NsdeployEngine {
   top: { base: string; manifest?: unknown } | null;
   registry: {
     get(origin: string, agentName: string): unknown;
+    cache?: Map<string, unknown>;
     checkCycle(chain: string[], origin: string, agentName: string): void;
   };
   resolveRemote(ref: string, chain: string[], parentSpan: unknown, sourceManifest: unknown): Promise<unknown>;
   resolveMcp(ref: string | { url: string }, parentSpan: unknown, slyData: unknown, sourceManifest: unknown): Promise<unknown>;
   _mcpClients?: Map<string, unknown>;
+  _compile?(...args: unknown[]): Promise<unknown>;
   _assertAllowedPeer(target: string, sourceManifest: unknown): void;
 }
 
@@ -80,8 +82,6 @@ interface ServedFile {
   status: number;
   body: string;
   contentType: string;
-  /** Called when the runtime fetches this file. */
-  onServe?: (url: string) => void;
 }
 
 /** Strict structural equality for JSON values (objects, arrays, strings, numbers, booleans, null). */
@@ -129,6 +129,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   const originalResolveRemote = engine.resolveRemote;
   const originalResolveMcp = engine.resolveMcp;
   const reports = new Map<string, PassportReport>();
+  const sessionDigests = new Map<unknown, string>();
   // URL -> verified file, active only while the original resolveRemote runs for that partner.
   const served = new Map<string, ServedFile>();
   // Partner origins currently being compiled: any request to them that is not a served file is refused.
@@ -200,7 +201,6 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     if (url) {
       const file = served.get(url);
       if (file) {
-        file.onServe?.(url);
         return new Response(file.status === 404 ? null : file.body, {
           status: file.status,
           headers: { "content-type": file.contentType },
@@ -267,7 +267,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     const lastSeg = target.pathname.split("/").filter(Boolean).pop() ?? "";
     engine.registry.checkCycle(chain, origin, lastSeg);
     const cached = engine.registry.get(origin, lastSeg);
-    if (cached) return cached;
+    if (cached && sessionDigests.has(cached)) return cached;
 
     const context: GuardContext = { ref, networkUrl: target.href };
     const report = await inspectPeer(target.href, {
@@ -341,15 +341,20 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     try {
       // Another resolution of the same partner may have compiled it while this one waited.
       const compiled = engine.registry.get(origin, lastSeg);
-      if (compiled) {
+      if (compiled && sessionDigests.get(compiled) === report.digest?.combined) {
         remember(report);
         options.onDecision?.(report, true, context);
         return compiled;
       }
-      // Release the queue as soon as the runtime has read every checked file. After that the runtime
-      // may wait on the visitor (for example for a partner's action bridge), and that wait must not
-      // hold up other partners. resolveRemote settling also releases it.
-      const remaining = new Set(files.map(([url]) => url));
+      if (compiled) {
+        // The runtime checks its registry again. Remove a different or unverified session
+        // before asking it to compile the newly approved artifacts.
+        if (!engine.registry.cache) block("the cached session does not match the approved artifacts.");
+        engine.registry.cache!.delete(`${origin}::${lastSeg}`);
+      }
+      // Page fetches may read checked bytes, but cannot consume them. Only completion of
+      // this resolution's _compile releases them, before any action-discovery prompt.
+      // A runtime without that boundary keeps the seal until resolveRemote settles.
       let released = false;
       const release = () => {
         if (released) return;
@@ -360,14 +365,22 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
         else sealedOrigins.set(peerOrigin, left);
         releaseQueue();
       };
-      const onServe = (url: string) => {
-        remaining.delete(url);
-        if (remaining.size === 0) release();
-      };
-      for (const [url, file] of files) served.set(url, { ...file, onServe });
+      for (const [url, file] of files) served.set(url, file);
       sealedOrigins.set(peerOrigin, (sealedOrigins.get(peerOrigin) ?? 0) + 1);
       try {
-        const session = await originalResolveRemote.call(engine, ref, chain, parentSpan, sourceManifest);
+        const compile = engine._compile;
+        const receiver = new Proxy(engine, {
+          get(target, key, proxy) {
+            if (key === "_compile" && compile) return async (...args: unknown[]) => {
+              const result = await compile.apply(engine, args);
+              release();
+              return result;
+            };
+            return Reflect.get(target, key, proxy);
+          },
+        });
+        const session = await originalResolveRemote.call(receiver, ref, chain, parentSpan, sourceManifest);
+        sessionDigests.set(session, report.digest!.combined);
         remember(report);
         options.onDecision?.(report, true, context);
         return session;
