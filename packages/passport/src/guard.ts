@@ -13,6 +13,7 @@
 //    checked, even if the partner's server changes its answer between the two moments.
 
 import { inspectPeer } from "./inspect.js";
+import { mcpResponseTransform } from "./mcp-response.js";
 import type { InspectOptions, PassportReport, PinFile } from "./types.js";
 
 /** The parts of the nsdeploy Engine the guard relies on (runtime commit in apps/site/public/runtime/UPSTREAM_COMMIT.txt). */
@@ -161,6 +162,11 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   }
 
   const boundedMcpFetch = async (input: RequestInfo | URL, init: RequestInit | undefined, url: string): Promise<Response> => {
+    const cacheKey = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const client = engine._mcpClients?.get(cacheKey);
+    const invalidate = () => {
+      if (engine._mcpClients?.get(cacheKey) === client) engine._mcpClients?.delete(cacheKey);
+    };
     const deadline = new AbortController();
     const timer = setTimeout(() => deadline.abort(new Error(`Agent Passport: the MCP server at ${url} did not finish within ${mcpTimeoutMs} ms.`)), mcpTimeoutMs);
     const signals = [deadline.signal, init?.signal, input instanceof Request ? input.signal : undefined].filter((s): s is AbortSignal => !!s);
@@ -169,8 +175,10 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
       response = await realFetch(input as RequestInfo, { ...init, redirect: "error", signal: AbortSignal.any(signals) });
     } catch (error) {
       clearTimeout(timer);
+      invalidate();
       throw error;
     }
+    if (response.status === 404) invalidate();
     if (!response.body) {
       clearTimeout(timer);
       return response;
@@ -193,7 +201,29 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
         },
       }),
     );
-    return new Response(capped, { status: response.status, statusText: response.statusText, headers: response.headers });
+    let checked = capped;
+    try {
+      const rpc: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+      if (rpc && typeof rpc === "object" && "id" in rpc && (typeof rpc.id === "string" || typeof rpc.id === "number")) {
+        checked = capped.pipeThrough(mcpResponseTransform(rpc.id, response.headers.get("content-type") ?? ""));
+      }
+    } catch { /* A request without a JSON-RPC body still gets the transport limits. */ }
+    const reader = checked.getReader();
+    const recoverable = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const { value, done } = await reader.read();
+          if (done) controller.close();
+          else controller.enqueue(value);
+        } catch (error) {
+          clearTimeout(timer);
+          invalidate();
+          controller.error(error);
+        }
+      },
+      cancel(reason) { clearTimeout(timer); return reader.cancel(reason); },
+    });
+    return new Response(recoverable, { status: response.status, statusText: response.statusText, headers: response.headers });
   };
 
   const guardedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -401,6 +431,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   ): Promise<unknown> {
     const url = mcpTarget(ref);
     assertCallerAllowedPeer(url, sourceManifest);
+    mcpEndpoints.add(new URL(url).href.split(/[?#]/)[0]!);
     const headers = mcpHeaders(slyData, url);
     if (Object.keys(headers).length && new URL(url).protocol === "http:") {
       throw new TypeError(`Agent Passport: refuse to send MCP credentials over HTTP; use HTTPS for ${url}.`);

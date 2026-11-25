@@ -628,6 +628,43 @@ describe("installPassportGuard", () => {
     expect(log.filter(u => u === `${PEER}/links.json`)).toHaveLength(1);
   });
 
+  it.each(["initialize", "initialize?query", "notifications/initialized", "body", "expired"])("recovers MCP sessions after %s fails without replaying a call", async stage => {
+    const endpoint = `https://mcp.example/mcp${stage.includes("?") ? "?service=tools" : ""}`;
+    const engine = await bootEngine();
+    engine.top.manifest.allowed_peers.push(endpoint);
+    const sent: { method: string; session: string | null }[] = [];
+    let failed = false;
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) !== endpoint) return inner(input, init);
+      const rpc = JSON.parse(String(init?.body));
+      sent.push({ method: rpc.method, session: new Headers(init?.headers).get("mcp-session-id") });
+      if (!failed && stage === "body" && rpc.method === "initialize") {
+        failed = true;
+        return new Response(new ReadableStream({ start(controller) { init?.signal?.addEventListener("abort", () => controller.error(new Error("initialization timed out")), { once: true }); } }), { headers: { "Mcp-Session-Id": "old-session" } });
+      }
+      if (!failed && rpc.method === (stage === "expired" ? "tools/call" : stage.split("?")[0])) {
+        failed = true;
+        if (stage === "expired") return new Response("expired", { status: 404 });
+        throw new Error("initialization timed out");
+      }
+      return Response.json({ jsonrpc: "2.0", id: rpc.id, result: rpc.method === "tools/list" ? { tools: [] } : {} }, { headers: { "Mcp-Session-Id": failed ? "new-session" : "old-session" } });
+    };
+    guard = installPassportGuard(engine, { pins: null, mcpLimits: { timeoutMs: 20 } });
+    const first = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    if (stage === "expired") {
+      await first.listTools();
+      await expect(first.callTool("write", {})).rejects.toThrow(/404/);
+    } else await expect(first.listTools()).rejects.toThrow(/timed out/);
+    const before = sent.length;
+    const second = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    const third = await engine.resolveMcp(endpoint, null, {}, engine.top.manifest);
+    await Promise.all([second.listTools(), third.listTools()]);
+    expect(sent[before]).toEqual({ method: "initialize", session: null });
+    expect(sent.slice(before).filter(r => r.method === "initialize")).toHaveLength(1);
+    expect(sent.filter(r => r.method === "tools/call")).toHaveLength(stage === "expired" ? 1 : 0);
+  });
+
   it("uninstall restores the runtime and fetch", async () => {
     const engine = await bootEngine();
     const original = engine.resolveRemote;
