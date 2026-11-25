@@ -689,6 +689,23 @@ describe("installPassportGuard", () => {
     expect(log.some(u => u === `${CALLER}/support.json`)).toBe(false);
   });
 
+  it("keeps late partner action receipts out of a new chat", async () => {
+    const engine = await bootEngine();
+    let finish!: (value: unknown) => void;
+    let entered!: () => void;
+    const running = new Promise<void>(r => { entered = r; });
+    const action = engine.actions.register({ base: PEER, network: "partner" }, { name: "save", description: "Save data", inputSchema: { type: "object", properties: {} } }, () => { entered(); return new Promise(r => { finish = r; }); });
+    engine.actionPresentations.set("old", { components: [{ kind: "action", id: "save", action, arguments: {} }] });
+    engine.onActionConfirm = async () => true;
+    guard = installPassportGuard(engine, { pins: null });
+    const pending = engine.submitActions({ turnId: "old", componentId: "save" });
+    await running;
+    engine.resetHistory();
+    finish({ saved: true });
+    expect(await pending).toHaveLength(1);
+    expect(engine.history).toEqual([]);
+  });
+
   it("uninstall restores the runtime and fetch", async () => {
     const engine = await bootEngine();
     const original = engine.resolveRemote;

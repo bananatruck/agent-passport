@@ -30,6 +30,8 @@ export interface NsdeployEngine {
   _compile?(...args: unknown[]): Promise<unknown>;
   runtimeAllowedPeers?: Set<string>;
   resolveLink?(reference: string, network: unknown, base: string, parentSpan: unknown): Promise<unknown>;
+  history?: unknown[];
+  submitActions?(input: { turnId: string; componentId: string; values?: Record<string, unknown> }): Promise<unknown>;
   _assertAllowedPeer(target: string, sourceManifest: unknown): void;
 }
 
@@ -131,6 +133,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
   const realFetch: typeof fetch = originalFetch.bind(globalThis);
   const originalResolveRemote = engine.resolveRemote;
   const originalResolveMcp = engine.resolveMcp;
+  const originalSubmitActions = engine.submitActions;
   const originalResolveLink = engine.resolveLink;
   const topAllowedPeers = new Set(engine.runtimeAllowedPeers);
   const manifestBases = new Map<unknown, string>();
@@ -457,6 +460,14 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     return target;
   };
 
+  if (originalSubmitActions) engine.submitActions = (input) => {
+    // resetHistory replaces the array. A late receipt belongs to the invocation
+    // that started it, so capture that array instead of writing into the new chat.
+    const history = engine.history;
+    const receiver = new Proxy(engine, { get(target, key, proxy) { return key === "history" ? history : Reflect.get(target, key, proxy); } });
+    return originalSubmitActions.call(receiver, input);
+  };
+
   engine.resolveRemote = guardedResolveRemote;
   engine.resolveMcp = guardedResolveMcp;
 
@@ -465,6 +476,7 @@ export function installPassportGuard(engine: NsdeployEngine, options: GuardOptio
     uninstall() {
       engine.resolveRemote = originalResolveRemote;
       engine.resolveMcp = originalResolveMcp;
+      if (originalSubmitActions) engine.submitActions = originalSubmitActions;
       if (originalResolveLink) engine.resolveLink = originalResolveLink;
       if (globalThis.fetch === guardedFetch) globalThis.fetch = originalFetch;
     },
